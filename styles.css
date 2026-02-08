@@ -167,40 +167,42 @@ body::after {
   display: grid;
   grid-template-columns: auto 1fr auto;
   align-items: center;
-  gap: 12px;
-  padding-bottom: 12px;
+  gap: 10px;
+  padding: 6px 2px 14px;
   border-bottom: 1px solid var(--border);
 }
 
 .edit-title {
   text-align: center;
-  font-weight: 600;
-  font-size: 18px;
-  letter-spacing: 0.04em;
+  font-weight: 700;
+  font-size: 19px;
+  letter-spacing: 0.02em;
 }
 
 .icon-btn {
-  width: 44px;
-  height: 44px;
-  border-radius: 14px;
+  width: 42px;
+  height: 42px;
+  border-radius: 12px;
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  font-size: 20px;
+  font-size: 18px;
   padding: 0;
+  background: #1b202a;
+  border: 1px solid var(--border);
 }
 
 .save-btn {
-  padding: 10px 18px;
-  border-radius: 14px;
-  background: #3b8eea;
+  padding: 10px 20px;
+  border-radius: 12px;
+  background: #3aa0ff;
 }
 
 .template-name-row {
   display: flex;
   align-items: center;
   gap: 10px;
-  margin: 16px 0 6px;
+  margin: 18px 0 8px;
 }
 
 .template-name-row input {
@@ -209,7 +211,7 @@ body::after {
   border: none;
   box-shadow: none;
   padding: 2px 0;
-  font-size: 26px;
+  font-size: 28px;
   font-weight: 700;
 }
 
@@ -542,6 +544,12 @@ button:disabled {
   box-shadow: 0 14px 30px rgba(5, 6, 12, 0.35);
 }
 
+.edit-template .exercise-card {
+  margin: 18px 0;
+  padding: 16px;
+  border-radius: 18px;
+}
+
 .exercise-header {
   display: flex;
   justify-content: space-between;
@@ -550,8 +558,8 @@ button:disabled {
 }
 
 .exercise-title {
-  font-weight: 600;
-  font-size: 18px;
+  font-weight: 700;
+  font-size: 20px;
   color: #7fb7ff;
 }
 
@@ -572,6 +580,7 @@ button:disabled {
   padding: 6px 10px;
   border-radius: 12px;
   font-size: 12px;
+  white-space: nowrap;
 }
 
 .exercise-note {
@@ -602,17 +611,17 @@ button:disabled {
 
 .set-row {
   display: grid;
-  grid-template-columns: 34px minmax(90px, 1.2fr) minmax(70px, 0.9fr) minmax(70px, 0.9fr) minmax(70px, 0.9fr) 36px;
-  gap: 8px;
+  grid-template-columns: 36px minmax(110px, 1.3fr) minmax(70px, 0.8fr) minmax(70px, 0.8fr) minmax(70px, 0.8fr) 36px;
+  gap: 10px;
   align-items: center;
   font-size: 13px;
   padding: 6px 0;
 }
 
 .set-row.header {
-  font-size: 11px;
-  text-transform: uppercase;
-  letter-spacing: 0.08em;
+  font-size: 12px;
+  text-transform: none;
+  letter-spacing: 0.02em;
   color: var(--muted);
   text-align: center;
   justify-items: center;
@@ -624,23 +633,23 @@ button:disabled {
 }
 
 .set-pill {
-  width: 32px;
-  height: 32px;
+  width: 36px;
+  height: 36px;
   padding: 0;
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  border-radius: 12px;
-  background: #141621;
+  border-radius: 14px;
+  background: #1a1f28;
   color: #fff;
   justify-self: start;
 }
 
 .set-cell {
-  background: #191d28;
+  background: #1a1f28;
   border-radius: 14px;
-  padding: 6px 8px;
-  min-height: 34px;
+  padding: 8px 10px;
+  min-height: 38px;
   display: flex;
   align-items: center;
 }
@@ -669,9 +678,9 @@ button:disabled {
 }
 
 .set-remove {
-  width: 32px;
-  height: 32px;
-  border-radius: 12px;
+  width: 36px;
+  height: 36px;
+  border-radius: 14px;
   padding: 0;
   background: #1a1d28;
   border: 1px solid var(--border);
@@ -700,6 +709,9 @@ button:disabled {
   background: #1c202b;
   border: 1px solid var(--border);
   box-shadow: none;
+  padding: 12px 16px;
+  border-radius: 14px;
+  font-weight: 700;
 }
 
 .edit-template .add-set button.primary:hover {
@@ -917,6 +929,14 @@ input[data-field="workout-name"] {
   .workout-grid {
     grid-template-columns: 1fr;
   }
+
+  .edit-title {
+    font-size: 16px;
+  }
+
+  .template-name-row input {
+    font-size: 24px;
+  }
 }
 
 @media (max-width: 480px) {
@@ -934,6 +954,11 @@ input[data-field="workout-name"] {
   .row.wrap > input,
   .row.wrap > select {
     min-width: 120px;
+  }
+
+  .set-row {
+    grid-template-columns: 34px minmax(90px, 1fr) minmax(60px, 0.8fr) minmax(60px, 0.8fr) minmax(60px, 0.8fr) 34px;
+    gap: 8px;
   }
 }
 
