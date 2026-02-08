@@ -611,7 +611,7 @@ button:disabled {
 
 .set-row {
   display: grid;
-  grid-template-columns: 36px minmax(110px, 1.3fr) minmax(70px, 0.8fr) minmax(70px, 0.8fr) minmax(70px, 0.8fr) 36px;
+  grid-template-columns: 40px minmax(140px, 1.6fr) minmax(68px, 0.7fr) minmax(68px, 0.7fr) minmax(64px, 0.6fr) 36px;
   gap: 10px;
   align-items: center;
   font-size: 13px;
@@ -909,7 +909,7 @@ input[data-field="workout-name"] {
   }
 
   .set-row {
-    grid-template-columns: 28px minmax(70px, 1.2fr) minmax(55px, 0.9fr) minmax(55px, 0.9fr) minmax(55px, 0.9fr) 30px;
+    grid-template-columns: 34px minmax(110px, 1.4fr) minmax(60px, 0.7fr) minmax(60px, 0.7fr) minmax(56px, 0.6fr) 32px;
   }
 
   .top-nav {
@@ -957,7 +957,7 @@ input[data-field="workout-name"] {
   }
 
   .set-row {
-    grid-template-columns: 34px minmax(90px, 1fr) minmax(60px, 0.8fr) minmax(60px, 0.8fr) minmax(60px, 0.8fr) 34px;
+    grid-template-columns: 32px minmax(90px, 1fr) minmax(56px, 0.7fr) minmax(56px, 0.7fr) minmax(52px, 0.6fr) 30px;
     gap: 8px;
   }
 }

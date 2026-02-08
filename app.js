@@ -369,7 +369,7 @@ function startWorkout(routineId = null) {
   saveState();
   renderLog();
   renderHistory();
-  setView("workouts");
+  setView("session");
   toast("Workout started");
 }
 
@@ -381,6 +381,7 @@ function endWorkout() {
   saveState();
   renderLog();
   renderHistory();
+  setView("workouts");
   toast("Workout saved");
 }
 
@@ -579,25 +580,20 @@ function deleteExercise(exerciseId) {
   renderExercises();
 }
 function renderLog() {
-  const active = getActiveWorkout();
-  const landing = $("#noWorkout");
-  const activePanel = $("#activeWorkoutPanel");
-
-  if (landing && activePanel) {
-    if (!active) {
-      landing.classList.remove("hidden");
-      activePanel.classList.add("hidden");
-    } else {
-      landing.classList.add("hidden");
-      activePanel.classList.remove("hidden");
-    }
-  }
-
   renderLandingWorkouts();
+  renderSession();
+}
+
+function renderSession() {
+  const active = getActiveWorkout();
+  const activePanel = $("#activeWorkoutPanel");
+  if (!activePanel) return;
 
   if (!active) {
+    activePanel.classList.add("hidden");
     return;
   }
+  activePanel.classList.remove("hidden");
 
   const nameInput = $("[data-field='workout-name']");
   const bwInput = $("[data-field='workout-bodyweight']");
