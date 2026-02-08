@@ -889,6 +889,18 @@ function renderRoutines() {
     }
   }
 
+  const routineNameInput = $("#routineNameInput");
+  if (routineNameInput) {
+    if (ui.editRoutineId) {
+      const edit = getEditRoutine();
+      routineNameInput.disabled = false;
+      routineNameInput.value = edit?.name || "";
+    } else {
+      routineNameInput.disabled = true;
+      routineNameInput.value = "";
+    }
+  }
+
   const routineExerciseSelect = $("#routineExerciseSelect");
   if (routineExerciseSelect) {
     if (state.exercises.length) {
@@ -1420,6 +1432,18 @@ function handleInputEvents() {
   document.addEventListener("input", (event) => {
     const target = event.target;
     if (updateSetFromControl(target)) return;
+    if (target.id === "routineNameInput") {
+      const routine = getEditRoutine();
+      if (routine) {
+        routine.name = target.value;
+        const select = $("#routineSelect");
+        const option = select?.querySelector(`option[value="${routine.id}"]`);
+        if (option) option.textContent = routine.name || "Workout";
+        saveState();
+        renderLandingWorkouts();
+      }
+      return;
+    }
     if (target.id === "exerciseSearch") {
       ui.exerciseSearch = target.value;
       renderExercises();

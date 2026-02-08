@@ -103,20 +103,27 @@
       </section>
 
       <section id="view-routines" class="view">
-        <div class="panel">
-          <div class="row space">
-            <h2>Edit Workout</h2>
-            <button class="ghost" data-action="nav" data-view="workouts">Back</button>
+        <div class="panel edit-template">
+          <div class="edit-topbar">
+            <button class="ghost icon-btn" data-action="nav" data-view="workouts" aria-label="Close">✕</button>
+            <div class="edit-title">Edit Template</div>
+            <button class="primary save-btn" data-action="nav" data-view="workouts">Save</button>
           </div>
-          <div class="row wrap">
+
+          <div class="template-name-row">
+            <input type="text" id="routineNameInput" placeholder="Workout name">
+            <button class="ghost icon-btn" data-action="share-routine" id="shareRoutineBtn" aria-label="Template options">⋯</button>
+          </div>
+
+          <div class="row wrap template-switch">
             <select id="routineSelect"></select>
-            <button class="ghost" data-action="share-routine" id="shareRoutineBtn">Share</button>
           </div>
-          <div class="row wrap">
+
+          <div class="row wrap edit-add">
             <select id="routineExerciseSelect"></select>
             <input type="text" id="routineGroup" placeholder="Group (A, B)">
             <input type="text" id="routineNote" placeholder="Note (optional)">
-            <button class="primary" data-action="add-routine-item">Add to Workout</button>
+            <button class="primary" data-action="add-routine-item">Add Exercise</button>
           </div>
           <div id="routineItems"></div>
         </div>
