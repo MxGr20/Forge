@@ -1,4 +1,4 @@
-const CACHE = "forge-cache-v3";
+﻿const CACHE = "forge-cache-v4";
 const ASSETS = [
   "./",
   "./index.html",
@@ -38,3 +38,4 @@ self.addEventListener("fetch", (event) => {
     })
   );
 });
+

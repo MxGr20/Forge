@@ -1,4 +1,4 @@
-<!doctype html>
+﻿<!doctype html>
 <html lang="en">
 <head>
   <meta charset="utf-8">
@@ -6,13 +6,13 @@
   <title>Forge Log</title>
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-  <link href="https://fonts.googleapis.com/css2?family=Bebas+Neue&family=Manrope:wght@400;500;600;700&display=swap" rel="stylesheet">
+  <link href="https://fonts.googleapis.com/css2?family=Sora:wght@400;500;600;700&family=Unbounded:wght@500;600&display=swap" rel="stylesheet">
   <link rel="stylesheet" href="styles.css">
   <link rel="manifest" href="manifest.json">
   <link rel="icon" href="icon.svg" type="image/svg+xml">
   <link rel="apple-touch-icon" href="icon.svg">
   <meta name="apple-mobile-web-app-capable" content="yes">
-  <meta name="theme-color" content="#f05a28">
+  <meta name="theme-color" content="#b197ff">
 </head>
 <body>
   <div class="app">
@@ -25,28 +25,55 @@
         <button id="installBtn" class="ghost hidden">Install</button>
       </div>
     </header>
+    <nav class="top-nav">
+      <button class="nav-btn active" data-action="nav" data-view="log">Start</button>
+      <button class="nav-btn" data-action="nav" data-view="routines">Workouts</button>
+      <button class="nav-btn" data-action="nav" data-view="exercises">Exercises</button>
+      <button class="nav-btn" data-action="nav" data-view="stats">Stats</button>
+      <button class="nav-btn" data-action="nav" data-view="tools">Tools</button>
+    </nav>
 
     <main id="viewContainer">
       <section id="view-log" class="view active">
-        <div class="panel">
-          <div class="row space">
-            <h2>Active Workout</h2>
+        <div id="noWorkout" class="landing">
+          <div class="hero">
+            <div class="eyebrow">New in 6.0</div>
+            <h1>Start Workout</h1>
+            <div class="hero-sub">Quick Start</div>
+            <button class="primary wide" data-action="start-quick">Start an Empty Workout</button>
+          </div>
+
+          <div class="panel">
+            <div class="row space">
+              <h2>Workouts</h2>
+              <button class="ghost" data-action="nav" data-view="routines">Manage</button>
+            </div>
+            <div class="row wrap landing-controls">
+              <select id="startRoutineSelect"></select>
+              <button class="primary" data-action="start-routine">Start Workout</button>
+              <button class="ghost" data-action="nav" data-view="routines">Create Workout</button>
+            </div>
+            <div id="landingWorkouts" class="workout-grid"></div>
+          </div>
+
+          <div class="panel">
+            <div class="row space">
+              <h2>Recent Workouts</h2>
+            </div>
+            <div id="recentWorkouts"></div>
+          </div>
+        </div>
+
+        <div id="activeWorkoutPanel" class="panel hidden">
+          <div class="row space active-header">
+            <div class="active-title">Edit Workout</div>
             <div class="row">
               <button class="ghost" data-action="share-workout">Share</button>
-              <button class="danger" data-action="end-workout">Finish</button>
+              <button class="primary" data-action="end-workout">Save</button>
             </div>
           </div>
 
-          <div id="noWorkout" class="empty">
-            <p>No active workout.</p>
-            <div class="row wrap">
-              <select id="startRoutineSelect"></select>
-              <button class="primary" data-action="start-routine">Start Routine</button>
-              <button class="ghost" data-action="start-quick">Quick Workout</button>
-            </div>
-          </div>
-
-          <div id="activeWorkout" class="hidden">
+          <div id="activeWorkout">
             <div class="grid-2">
               <label>
                 Workout Name
@@ -96,30 +123,23 @@
             <div id="workoutExercises"></div>
           </div>
         </div>
-
-        <div class="panel">
-          <div class="row space">
-            <h2>Recent Workouts</h2>
-          </div>
-          <div id="recentWorkouts"></div>
-        </div>
       </section>
 
       <section id="view-routines" class="view">
         <div class="panel">
           <div class="row space">
-            <h2>Routines</h2>
+            <h2>Workouts</h2>
           </div>
           <div class="row wrap">
-            <input type="text" id="newRoutineName" placeholder="Routine name">
-            <button class="primary" data-action="create-routine">Create Routine</button>
+            <input type="text" id="newRoutineName" placeholder="Workout name">
+            <button class="primary" data-action="create-routine">Create Workout</button>
           </div>
           <div id="routineList"></div>
         </div>
 
         <div class="panel">
           <div class="row space">
-            <h2>Routine Builder</h2>
+            <h2>Workout Builder</h2>
           </div>
           <div class="row wrap">
             <select id="routineSelect"></select>
@@ -129,7 +149,7 @@
             <select id="routineExerciseSelect"></select>
             <input type="text" id="routineGroup" placeholder="Group (A, B)">
             <input type="text" id="routineNote" placeholder="Note (optional)">
-            <button class="primary" data-action="add-routine-item">Add to Routine</button>
+            <button class="primary" data-action="add-routine-item">Add to Workout</button>
           </div>
           <div id="routineItems"></div>
         </div>
@@ -301,13 +321,6 @@
       </section>
     </main>
 
-    <nav class="bottom-nav">
-      <button class="nav-btn active" data-action="nav" data-view="log">Log</button>
-      <button class="nav-btn" data-action="nav" data-view="routines">Routines</button>
-      <button class="nav-btn" data-action="nav" data-view="exercises">Exercises</button>
-      <button class="nav-btn" data-action="nav" data-view="stats">Stats</button>
-      <button class="nav-btn" data-action="nav" data-view="tools">Tools</button>
-    </nav>
   </div>
 
   <div id="toast" class="toast"></div>
@@ -315,3 +328,4 @@
   <script src="app.js"></script>
 </body>
 </html>
+

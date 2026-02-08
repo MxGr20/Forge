@@ -1,296 +1,46 @@
-
+ï»¿
 const STORAGE_KEY = "forge_data_v1";
 
-const SEED_EXERCISES = [
-  {
-    id: "ex-bench",
-    name: "Bench Press",
-    category: "Chest",
-    type: "weight",
-    instructions: "Flat barbell press. Touch lightly, press to lockout.",
-    videoUrl: ""
-  },
-  {
-    id: "ex-incline-db",
-    name: "Incline Dumbbell Press",
-    category: "Chest",
-    type: "weight",
-    instructions: "Press upward with control. Keep shoulders packed.",
-    videoUrl: ""
-  },
-  {
-    id: "ex-overhead-press",
-    name: "Overhead Press",
-    category: "Shoulders",
-    type: "weight",
-    instructions: "Press bar overhead. Lock out with ribs down.",
-    videoUrl: ""
-  },
-  {
-    id: "ex-pushup",
-    name: "Push Up",
-    category: "Chest",
-    type: "weight",
-    instructions: "Rigid plank. Touch chest, press up.",
-    videoUrl: ""
-  },
-  {
-    id: "ex-dips",
-    name: "Dips",
-    category: "Chest",
-    type: "weight",
-    instructions: "Lean slightly. Lower with control, press.",
-    videoUrl: ""
-  },
-  {
-    id: "ex-chest-fly",
-    name: "Dumbbell Fly",
-    category: "Chest",
-    type: "weight",
-    instructions: "Soft elbows. Wide arc, squeeze at top.",
-    videoUrl: ""
-  },
-  {
-    id: "ex-deadlift",
-    name: "Deadlift",
-    category: "Back",
-    type: "weight",
-    instructions: "Brace. Push floor away. Stand tall.",
-    videoUrl: ""
-  },
-  {
-    id: "ex-row",
-    name: "Barbell Row",
-    category: "Back",
-    type: "weight",
-    instructions: "Hinge, pull to lower ribs.",
-    videoUrl: ""
-  },
-  {
-    id: "ex-db-row",
-    name: "One-Arm Dumbbell Row",
-    category: "Back",
-    type: "weight",
-    instructions: "Hips square. Pull elbow to hip.",
-    videoUrl: ""
-  },
-  {
-    id: "ex-pullup",
-    name: "Pull Up",
-    category: "Back",
-    type: "weight",
-    instructions: "Full hang. Pull chest to bar.",
-    videoUrl: ""
-  },
-  {
-    id: "ex-assisted-pullup",
-    name: "Assisted Pull Up",
-    category: "Back",
-    type: "assisted",
-    instructions: "Use assistance. Full range of motion.",
-    videoUrl: ""
-  },
-  {
-    id: "ex-lat-pulldown",
-    name: "Lat Pulldown",
-    category: "Back",
-    type: "weight",
-    instructions: "Pull bar to upper chest.",
-    videoUrl: ""
-  },
-  {
-    id: "ex-back-squat",
-    name: "Back Squat",
-    category: "Legs",
-    type: "weight",
-    instructions: "Brace. Sit between hips and knees.",
-    videoUrl: ""
-  },
-  {
-    id: "ex-front-squat",
-    name: "Front Squat",
-    category: "Legs",
-    type: "weight",
-    instructions: "Elbows high. Stay upright.",
-    videoUrl: ""
-  },
-  {
-    id: "ex-rdl",
-    name: "Romanian Deadlift",
-    category: "Legs",
-    type: "weight",
-    instructions: "Hinge. Keep bar close.",
-    videoUrl: ""
-  },
-  {
-    id: "ex-leg-press",
-    name: "Leg Press",
-    category: "Legs",
-    type: "weight",
-    instructions: "Full range. Control the sled.",
-    videoUrl: ""
-  },
-  {
-    id: "ex-leg-curl",
-    name: "Leg Curl",
-    category: "Legs",
-    type: "weight",
-    instructions: "Slow eccentric. Squeeze at top.",
-    videoUrl: ""
-  },
-  {
-    id: "ex-leg-extension",
-    name: "Leg Extension",
-    category: "Legs",
-    type: "weight",
-    instructions: "Lift through quads. Control down.",
-    videoUrl: ""
-  },
-  {
-    id: "ex-calf-raise",
-    name: "Calf Raise",
-    category: "Legs",
-    type: "weight",
-    instructions: "Full stretch. Pause at top.",
-    videoUrl: ""
-  },
-  {
-    id: "ex-walking-lunge",
-    name: "Walking Lunge",
-    category: "Legs",
-    type: "weight",
-    instructions: "Long stride. Knee tracks toes.",
-    videoUrl: ""
-  },
-  {
-    id: "ex-hip-thrust",
-    name: "Hip Thrust",
-    category: "Glutes",
-    type: "weight",
-    instructions: "Chin tucked. Full hip extension.",
-    videoUrl: ""
-  },
-  {
-    id: "ex-barbell-curl",
-    name: "Barbell Curl",
-    category: "Arms",
-    type: "weight",
-    instructions: "Elbows still. Smooth tempo.",
-    videoUrl: ""
-  },
-  {
-    id: "ex-hammer-curl",
-    name: "Hammer Curl",
-    category: "Arms",
-    type: "weight",
-    instructions: "Neutral grip. Control both ways.",
-    videoUrl: ""
-  },
-  {
-    id: "ex-tri-pushdown",
-    name: "Triceps Pushdown",
-    category: "Arms",
-    type: "weight",
-    instructions: "Pin elbows. Full extension.",
-    videoUrl: ""
-  },
-  {
-    id: "ex-skull",
-    name: "Skull Crushers",
-    category: "Arms",
-    type: "weight",
-    instructions: "Lower to forehead. Elbows in.",
-    videoUrl: ""
-  },
-  {
-    id: "ex-plank",
-    name: "Plank",
-    category: "Core",
-    type: "duration",
-    instructions: "Neutral spine. Breathe steadily.",
-    videoUrl: ""
-  },
-  {
-    id: "ex-hanging-leg",
-    name: "Hanging Leg Raise",
-    category: "Core",
-    type: "weight",
-    instructions: "Control swing. Lift with abs.",
-    videoUrl: ""
-  },
-  {
-    id: "ex-russian-twist",
-    name: "Russian Twist",
-    category: "Core",
-    type: "weight",
-    instructions: "Rotate torso. Keep chest up.",
-    videoUrl: ""
-  },
-  {
-    id: "ex-run",
-    name: "Running",
-    category: "Cardio",
-    type: "duration",
-    instructions: "Steady pace or intervals.",
-    videoUrl: ""
-  },
-  {
-    id: "ex-cycle",
-    name: "Cycling",
-    category: "Cardio",
-    type: "duration",
-    instructions: "Maintain smooth cadence.",
-    videoUrl: ""
-  },
-  {
-    id: "ex-rowing",
-    name: "Rowing",
-    category: "Cardio",
-    type: "duration",
-    instructions: "Legs, hips, arms. Strong finish.",
-    videoUrl: ""
-  },
-  {
-    id: "ex-jumprope",
-    name: "Jump Rope",
-    category: "Cardio",
-    type: "duration",
-    instructions: "Soft knees. Small jumps.",
-    videoUrl: ""
-  },
-  {
-    id: "ex-stair",
-    name: "Stair Climb",
-    category: "Cardio",
-    type: "duration",
-    instructions: "Drive through midfoot.",
-    videoUrl: ""
-  },
-  {
-    id: "ex-elliptical",
-    name: "Elliptical",
-    category: "Cardio",
-    type: "duration",
-    instructions: "Smooth motion, steady effort.",
-    videoUrl: ""
-  },
-  {
-    id: "ex-clean-press",
-    name: "Clean and Press",
-    category: "Full Body",
-    type: "weight",
-    instructions: "Explosive clean, strict press.",
-    videoUrl: ""
-  },
-  {
-    id: "ex-kb-swing",
-    name: "Kettlebell Swing",
-    category: "Full Body",
-    type: "weight",
-    instructions: "Hip hinge. Snap hips to chest height.",
-    videoUrl: ""
-  }
-];
+const SEED_EXERCISES = [];
+
+const LEGACY_SEEDED_IDS = new Set([
+  "ex-bench",
+  "ex-incline-db",
+  "ex-overhead-press",
+  "ex-pushup",
+  "ex-dips",
+  "ex-chest-fly",
+  "ex-deadlift",
+  "ex-row",
+  "ex-db-row",
+  "ex-pullup",
+  "ex-assisted-pullup",
+  "ex-lat-pulldown",
+  "ex-back-squat",
+  "ex-front-squat",
+  "ex-rdl",
+  "ex-leg-press",
+  "ex-leg-curl",
+  "ex-leg-extension",
+  "ex-calf-raise",
+  "ex-walking-lunge",
+  "ex-hip-thrust",
+  "ex-barbell-curl",
+  "ex-hammer-curl",
+  "ex-tri-pushdown",
+  "ex-skull",
+  "ex-plank",
+  "ex-hanging-leg",
+  "ex-russian-twist",
+  "ex-run",
+  "ex-cycle",
+  "ex-rowing",
+  "ex-jumprope",
+  "ex-stair",
+  "ex-elliptical",
+  "ex-clean-press",
+  "ex-kb-swing"
+]);
 
 const DEFAULT_STATE = {
   version: 1,
@@ -339,7 +89,7 @@ function loadState() {
     const saved = JSON.parse(raw);
     const merged = JSON.parse(JSON.stringify(DEFAULT_STATE));
     merged.settings = { ...merged.settings, ...(saved.settings || {}) };
-    merged.exercises = Array.isArray(saved.exercises) && saved.exercises.length ? saved.exercises : SEED_EXERCISES;
+    merged.exercises = stripLegacyExercises(saved.exercises);
     merged.routines = Array.isArray(saved.routines) ? saved.routines : [];
     merged.workouts = Array.isArray(saved.workouts) ? saved.workouts : [];
     merged.activeWorkoutId = saved.activeWorkoutId || null;
@@ -354,6 +104,12 @@ function saveState() {
 }
 
 let state = loadState();
+
+function stripLegacyExercises(exercises) {
+  if (!Array.isArray(exercises)) return [];
+  return exercises.filter((exercise) => !LEGACY_SEEDED_IDS.has(exercise.id));
+}
+
 
 let photoDB = null;
 
@@ -659,7 +415,7 @@ function createRoutine() {
   if (!input) return;
   const name = input.value.trim();
   if (!name) {
-    toast("Name your routine");
+    toast("Name your workout");
     return;
   }
   const routine = {
@@ -684,7 +440,7 @@ function deleteRoutine(routineId) {
 function addRoutineItem() {
   const routine = getEditRoutine();
   if (!routine) {
-    toast("Create or select a routine");
+    toast("Create or select a workout");
     return;
   }
   const exId = $("#routineExerciseSelect")?.value;
@@ -761,7 +517,7 @@ function exerciseInUse(exerciseId) {
 
 function deleteExercise(exerciseId) {
   if (exerciseInUse(exerciseId)) {
-    toast("Exercise is used in routines or workouts");
+    toast("Exercise is used in workouts or sessions");
     return;
   }
   state.exercises = state.exercises.filter((ex) => ex.id !== exerciseId);
@@ -770,28 +526,36 @@ function deleteExercise(exerciseId) {
 }
 function renderLog() {
   const active = getActiveWorkout();
-  const noWorkout = $("#noWorkout");
-  const activeWrap = $("#activeWorkout");
+  const landing = $("#noWorkout");
+  const activePanel = $("#activeWorkoutPanel");
 
-  if (noWorkout && activeWrap) {
+  if (landing && activePanel) {
     if (!active) {
-      noWorkout.classList.remove("hidden");
-      activeWrap.classList.add("hidden");
+      landing.classList.remove("hidden");
+      activePanel.classList.add("hidden");
     } else {
-      noWorkout.classList.add("hidden");
-      activeWrap.classList.remove("hidden");
+      landing.classList.add("hidden");
+      activePanel.classList.remove("hidden");
     }
   }
 
   const routineSelect = $("#startRoutineSelect");
   if (routineSelect) {
-    routineSelect.innerHTML = state.routines.length
-      ? state.routines.map((r) => `<option value="${r.id}">${esc(r.name)}</option>`).join("")
-      : "<option value=\"\">No routines yet</option>";
+    if (state.routines.length) {
+      routineSelect.disabled = false;
+      routineSelect.innerHTML = state.routines.map((r) => `<option value="${r.id}">${esc(r.name)}</option>`).join("");
+    } else {
+      routineSelect.disabled = true;
+      routineSelect.innerHTML = "<option value=\"\">No workouts yet</option>";
+    }
   }
+  const startRoutineButton = document.querySelector("[data-action='start-routine']");
+  if (startRoutineButton) startRoutineButton.disabled = !state.routines.length;
+
+  renderLandingWorkouts();
+  renderRecentWorkouts();
 
   if (!active) {
-    renderRecentWorkouts();
     return;
   }
 
@@ -804,11 +568,25 @@ function renderLog() {
 
   const addSelect = $("#addExerciseSelect");
   if (addSelect) {
-    addSelect.innerHTML = state.exercises
-      .slice()
-      .sort((a, b) => a.name.localeCompare(b.name))
-      .map((ex) => `<option value="${ex.id}">${esc(ex.name)}</option>`)
-      .join("");
+    if (state.exercises.length) {
+      addSelect.disabled = false;
+      addSelect.innerHTML = state.exercises
+        .slice()
+        .sort((a, b) => a.name.localeCompare(b.name))
+        .map((ex) => `<option value="${ex.id}">${esc(ex.name)}</option>`)
+        .join("");
+    } else {
+      addSelect.disabled = true;
+      addSelect.innerHTML = "<option value=\"\">Add exercises first</option>";
+    }
+  }
+  const addButton = document.querySelector("[data-action='add-workout-exercise']");
+  if (addButton) addButton.disabled = !state.exercises.length;
+  const addExerciseHint = document.querySelector(".add-exercise .muted");
+  if (addExerciseHint) {
+    addExerciseHint.textContent = state.exercises.length
+      ? "Choose from your library or create a new one."
+      : "Add exercises in the Exercises tab first.";
   }
 
   const container = $("#workoutExercises");
@@ -822,14 +600,13 @@ function renderLog() {
 
   updateTimerUI();
   renderPhotoStrip(active.photoIds || []);
-  renderRecentWorkouts();
 }
 
 function renderWorkoutExercise(item, workout) {
   const exercise = getExercise(item.exerciseId);
   if (!exercise) return "";
   const groupLabel = item.group ? `Superset ${esc(item.group)}` : "Single";
-  const meta = `${esc(exercise.category || "General")} · ${exercise.type}`;
+  const meta = `${esc(exercise.category || "General")} Â· ${exercise.type}`;
   const setsHeader = "<div class=\"set-row header\"><div>#</div><div>Load</div><div>Reps/Time</div><div>Tag</div><div></div></div>";
   const setsRows = item.sets
     .map((set, index) => renderSetRow(set, index, item.id, workout))
@@ -869,7 +646,7 @@ function renderWorkoutExercise(item, workout) {
       <div class="exercise-header">
         <div>
           <div class="title">${esc(exercise.name)}</div>
-          <div class="exercise-meta">${meta} · ${groupLabel}</div>
+          <div class="exercise-meta">${meta} Â· ${groupLabel}</div>
         </div>
         <button class="ghost small" data-action="remove-workout-exercise" data-item-id="${item.id}">Remove</button>
       </div>
@@ -939,6 +716,32 @@ function renderRecentWorkouts() {
   }).join("");
 }
 
+function renderLandingWorkouts() {
+  const grid = $("#landingWorkouts");
+  if (!grid) return;
+  if (!state.routines.length) {
+    grid.innerHTML = "<div class=\"muted small\">No workouts yet. Create one to get started.</div>";
+    return;
+  }
+  grid.innerHTML = state.routines.map((routine) => {
+    const preview = routine.items
+      .slice(0, 3)
+      .map((item) => getExercise(item.exerciseId)?.name || "Exercise")
+      .join(", ");
+    const extra = routine.items.length > 3 ? ` +${routine.items.length - 3} more` : "";
+    return `
+      <div class="workout-card">
+        <div class="workout-title">${esc(routine.name)}</div>
+        <div class="workout-meta">${esc(preview || "No exercises yet")}${extra}</div>
+        <div class="workout-actions">
+          <button class="primary small" data-action="start-routine" data-routine-id="${routine.id}">Start</button>
+          <button class="ghost small" data-action="edit-routine" data-routine-id="${routine.id}">Edit</button>
+        </div>
+      </div>
+    `;
+  }).join("");
+}
+
 function workoutVolume(workout) {
   let volume = 0;
   workout.items.forEach((item) => {
@@ -971,14 +774,14 @@ function renderRoutines() {
           </div>
         `;
       }).join("")
-      : "<div class=\"muted small\">No routines yet.</div>";
+      : "<div class=\"muted small\">No workouts yet.</div>";
   }
 
   const routineSelect = $("#routineSelect");
   if (routineSelect) {
     routineSelect.innerHTML = state.routines.length
       ? state.routines.map((r) => `<option value="${r.id}">${esc(r.name)}</option>`).join("")
-      : "<option value=\"\">No routines yet</option>";
+      : "<option value=\"\">No workouts yet</option>";
 
     if (!ui.editRoutineId && state.routines.length) {
       ui.editRoutineId = state.routines[0].id;
@@ -988,20 +791,26 @@ function renderRoutines() {
 
   const routineExerciseSelect = $("#routineExerciseSelect");
   if (routineExerciseSelect) {
-    routineExerciseSelect.innerHTML = state.exercises
-      .slice()
-      .sort((a, b) => a.name.localeCompare(b.name))
-      .map((ex) => `<option value="${ex.id}">${esc(ex.name)}</option>`)
-      .join("");
+    if (state.exercises.length) {
+      routineExerciseSelect.disabled = false;
+      routineExerciseSelect.innerHTML = state.exercises
+        .slice()
+        .sort((a, b) => a.name.localeCompare(b.name))
+        .map((ex) => `<option value="${ex.id}">${esc(ex.name)}</option>`)
+        .join("");
+    } else {
+      routineExerciseSelect.disabled = true;
+      routineExerciseSelect.innerHTML = "<option value=\"\">Add exercises first</option>";
+    }
   }
 
   const builder = $("#routineItems");
   const routine = getEditRoutine();
   if (builder) {
     if (!routine) {
-      builder.innerHTML = "<div class=\"muted small\">Select a routine to edit.</div>";
+      builder.innerHTML = "<div class=\"muted small\">Select a workout to edit.</div>";
     } else if (!routine.items.length) {
-      builder.innerHTML = "<div class=\"muted small\">Add exercises to build this routine.</div>";
+      builder.innerHTML = "<div class=\"muted small\">Add exercises to build this workout.</div>";
     } else {
       builder.innerHTML = routine.items.map((item) => {
         const ex = getExercise(item.exerciseId);
@@ -1009,7 +818,7 @@ function renderRoutines() {
           <div class="result-item">
             <div>
               <div class="title">${esc(ex?.name || "Unknown")}</div>
-              <div class="muted small">${esc(item.group || "Single")} ${item.note ? `· ${esc(item.note)}` : ""}</div>
+              <div class="muted small">${esc(item.group || "Single")} ${item.note ? `Â· ${esc(item.note)}` : ""}</div>
             </div>
             <div class="row wrap">
               <button class="ghost small" data-action="move-routine-item-up" data-routine-id="${routine.id}" data-item-id="${item.id}">Up</button>
@@ -1021,6 +830,11 @@ function renderRoutines() {
       }).join("");
     }
   }
+
+  const addButton = document.querySelector("[data-action='add-routine-item']");
+  if (addButton) addButton.disabled = !state.exercises.length;
+
+  renderLandingWorkouts();
 }
 
 function renderExercises() {
@@ -1032,6 +846,11 @@ function renderExercises() {
     .sort((a, b) => a.name.localeCompare(b.name))
     .filter((ex) => ex.name.toLowerCase().includes(term) || (ex.category || "").toLowerCase().includes(term));
 
+  if (!state.exercises.length) {
+    list.innerHTML = "<div class=\"empty\">No exercises yet. Add your first exercise to get started.</div>";
+    return;
+  }
+
   list.innerHTML = exercises.length
     ? exercises.map((ex) => {
       const video = ex.videoUrl
@@ -1042,7 +861,7 @@ function renderExercises() {
           <div class="row space">
             <div>
               <div class="title">${esc(ex.name)}</div>
-              <div class="muted small">${esc(ex.category || "General")} · ${ex.type}</div>
+              <div class="muted small">${esc(ex.category || "General")} Â· ${ex.type}</div>
             </div>
             <button class="ghost small" data-action="delete-exercise" data-exercise-id="${ex.id}">Delete</button>
           </div>
@@ -1103,16 +922,31 @@ function computeExerciseStats(exerciseId) {
 function renderStats() {
   const select = $("#statsExerciseSelect");
   if (select) {
-    select.innerHTML = state.exercises
-      .slice()
-      .sort((a, b) => a.name.localeCompare(b.name))
-      .map((ex) => `<option value="${ex.id}">${esc(ex.name)}</option>`)
-      .join("");
-    if (!ui.statsExerciseId) ui.statsExerciseId = state.exercises[0]?.id || null;
-    if (ui.statsExerciseId) select.value = ui.statsExerciseId;
+    if (!state.exercises.length) {
+      select.innerHTML = "<option value=\"\">Add exercises first</option>";
+      select.disabled = true;
+      ui.statsExerciseId = null;
+    } else {
+      select.disabled = false;
+      select.innerHTML = state.exercises
+        .slice()
+        .sort((a, b) => a.name.localeCompare(b.name))
+        .map((ex) => `<option value="${ex.id}">${esc(ex.name)}</option>`)
+        .join("");
+      if (!ui.statsExerciseId) ui.statsExerciseId = state.exercises[0]?.id || null;
+      if (ui.statsExerciseId) select.value = ui.statsExerciseId;
+    }
   }
 
-  if (!ui.statsExerciseId) return;
+  if (!ui.statsExerciseId) {
+    $("#stat1rm").textContent = "-";
+    $("#statMaxWeight").textContent = "-";
+    $("#statMaxReps").textContent = "-";
+    $("#statVolume").textContent = "-";
+    renderLineChart($("#volumeChart"), [], "#b197ff");
+    renderLineChart($("#oneRmChart"), [], "#b197ff");
+    return;
+  }
   const stats = computeExerciseStats(ui.statsExerciseId);
   if (!stats) return;
 
@@ -1130,8 +964,8 @@ function renderStats() {
   const volumeData = stats.progression.map((p) => ({ label: formatDate(p.date), value: p.volume }));
   const oneRmData = stats.progression.map((p) => ({ label: formatDate(p.date), value: p.oneRm }));
 
-  renderLineChart($("#volumeChart"), volumeData, "#2c7a7b");
-  renderLineChart($("#oneRmChart"), isDuration ? [] : oneRmData, "#d97706");
+  renderLineChart($("#volumeChart"), volumeData, "#b197ff");
+  renderLineChart($("#oneRmChart"), isDuration ? [] : oneRmData, "#7a5cff");
 }
 
 function renderLineChart(container, data, color) {
@@ -1329,7 +1163,7 @@ async function shareRoutine(routineId) {
     }
   }
   await navigator.clipboard.writeText(text);
-  toast("Routine copied to clipboard");
+  toast("Workout copied to clipboard");
 }
 
 async function shareWorkout() {
@@ -1479,7 +1313,7 @@ function handleInputEvents() {
     if (action === "start-routine") {
       const routineId = button.dataset.routineId || $("#startRoutineSelect")?.value || null;
       if (!routineId) {
-        toast("Create a routine first");
+        toast("Create a workout first");
         return;
       }
       startWorkout(routineId);
@@ -1526,6 +1360,7 @@ function handleInputEvents() {
     }
     if (action === "edit-routine") {
       ui.editRoutineId = button.dataset.routineId;
+      setView("routines");
       renderRoutines();
       return;
     }
@@ -1599,7 +1434,7 @@ function importJson(file) {
 function loadStateFromImport(parsed) {
   const merged = JSON.parse(JSON.stringify(DEFAULT_STATE));
   merged.settings = { ...merged.settings, ...(parsed.settings || {}) };
-  merged.exercises = Array.isArray(parsed.exercises) && parsed.exercises.length ? parsed.exercises : SEED_EXERCISES;
+  merged.exercises = stripLegacyExercises(parsed.exercises);
   merged.routines = Array.isArray(parsed.routines) ? parsed.routines : [];
   merged.workouts = Array.isArray(parsed.workouts) ? parsed.workouts : [];
   merged.activeWorkoutId = parsed.activeWorkoutId || null;
@@ -1652,3 +1487,9 @@ function init() {
 }
 
 document.addEventListener("DOMContentLoaded", init);
+
+
+
+
+
+
