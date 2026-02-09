@@ -1,5 +1,7 @@
 ﻿
 const STORAGE_KEY = "forge_data_v1";
+const SUPABASE_URL = "https://ruuzraihxczeeeafkbve.supabase.co";
+const SUPABASE_ANON_KEY = "eeyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InJ1dXpyYWloeGN6ZWVlYWZrYnZlIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzA2MTU5MzAsImV4cCI6MjA4NjE5MTkzMH0.OVLMNwN0e940dSd6-aZqzaFFXCY3hcbgR_-dGvF1OwE";
 
 const SEED_EXERCISES = [];
 
@@ -44,6 +46,7 @@ const LEGACY_SEEDED_IDS = new Set([
 
 const DEFAULT_STATE = {
   version: 1,
+  lastModified: 0,
   settings: {
     units: "kg",
     restSecondsWork: 90,
@@ -96,6 +99,7 @@ function loadState() {
     merged.routines = Array.isArray(saved.routines) ? saved.routines.map(normalizeRoutine) : [];
     merged.workouts = Array.isArray(saved.workouts) ? saved.workouts.map(normalizeWorkout) : [];
     merged.activeWorkoutId = saved.activeWorkoutId || null;
+    merged.lastModified = saved.lastModified || 0;
     return merged;
   } catch (err) {
     return JSON.parse(JSON.stringify(DEFAULT_STATE));
@@ -103,10 +107,20 @@ function loadState() {
 }
 
 function saveState() {
+  state.lastModified = Date.now();
   localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
+  scheduleCloudSync();
 }
 
 let state = loadState();
+
+let supabaseClient = null;
+const cloud = {
+  user: null,
+  syncing: false,
+  lastSync: null
+};
+let syncTimer = null;
 
 function stripLegacyExercises(exercises) {
   if (!Array.isArray(exercises)) return [];
@@ -1662,6 +1676,19 @@ function handleInputEvents() {
     if (action === "share-workout") {
       shareWorkout();
     }
+    if (action === "cloud-login") {
+      const email = $("#cloudEmail")?.value.trim();
+      sendMagicLink(email);
+      return;
+    }
+    if (action === "cloud-sync") {
+      syncToCloud();
+      return;
+    }
+    if (action === "cloud-logout") {
+      supabaseClient?.auth.signOut();
+      return;
+    }
   });
 }
 
@@ -1689,6 +1716,7 @@ function loadStateFromImport(parsed) {
   merged.routines = Array.isArray(parsed.routines) ? parsed.routines.map(normalizeRoutine) : [];
   merged.workouts = Array.isArray(parsed.workouts) ? parsed.workouts.map(normalizeWorkout) : [];
   merged.activeWorkoutId = parsed.activeWorkoutId || null;
+  merged.lastModified = parsed.lastModified || 0;
   return merged;
 }
 
@@ -1699,6 +1727,7 @@ function renderAll() {
   renderExercises();
   renderStats();
   renderTools();
+  updateCloudUI();
 }
 
 function registerServiceWorker() {
@@ -1729,11 +1758,141 @@ function setupInstallPrompt() {
   });
 }
 
+function initSupabase() {
+  if (!window.supabase) return;
+  supabaseClient = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+  supabaseClient.auth.onAuthStateChange((_event, session) => {
+    cloud.user = session?.user || null;
+    updateCloudUI();
+    if (cloud.user) {
+      loadFromCloud();
+    }
+  });
+  supabaseClient.auth.getSession().then(({ data }) => {
+    cloud.user = data.session?.user || null;
+    updateCloudUI();
+    if (cloud.user) {
+      loadFromCloud();
+    }
+  });
+}
+
+function updateCloudUI() {
+  const status = $("#cloudStatus");
+  const email = $("#cloudEmail");
+  const loginBtn = $("#cloudLoginBtn");
+  const syncBtn = $("#cloudSyncBtn");
+  const logoutBtn = $("#cloudLogoutBtn");
+
+  if (!status) return;
+  if (!supabaseClient) {
+    status.textContent = "Cloud sync unavailable";
+    return;
+  }
+  if (cloud.user) {
+    status.textContent = `Signed in as ${cloud.user.email || "user"}`;
+    if (email) {
+      email.value = cloud.user.email || "";
+      email.disabled = true;
+    }
+    if (loginBtn) loginBtn.classList.add("hidden");
+    if (syncBtn) syncBtn.classList.remove("hidden");
+    if (logoutBtn) logoutBtn.classList.remove("hidden");
+  } else {
+    status.textContent = "Signed out";
+    if (email) {
+      email.disabled = false;
+    }
+    if (loginBtn) loginBtn.classList.remove("hidden");
+    if (syncBtn) syncBtn.classList.add("hidden");
+    if (logoutBtn) logoutBtn.classList.add("hidden");
+  }
+}
+
+async function sendMagicLink(email) {
+  if (!supabaseClient) return;
+  if (!email) {
+    toast("Enter an email address");
+    return;
+  }
+  const redirectTo = `${window.location.origin}${window.location.pathname}`;
+  const { error } = await supabaseClient.auth.signInWithOtp({
+    email,
+    options: { emailRedirectTo: redirectTo }
+  });
+  if (error) {
+    toast("Magic link failed");
+    return;
+  }
+  toast("Magic link sent");
+}
+
+async function loadFromCloud() {
+  if (!supabaseClient || !cloud.user) return;
+  const { data, error } = await supabaseClient
+    .from("forge_profiles")
+    .select("data, updated_at")
+    .eq("user_id", cloud.user.id)
+    .single();
+
+  if (error && error.code !== "PGRST116") {
+    toast("Cloud sync error");
+    return;
+  }
+
+  if (!data?.data) {
+    await syncToCloud();
+    return;
+  }
+
+  const remoteUpdated = Date.parse(data.updated_at || "") || 0;
+  const localUpdated = state.lastModified || 0;
+  if (remoteUpdated > localUpdated) {
+    state = loadStateFromImport(data.data);
+    state.lastModified = remoteUpdated;
+    localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
+    renderAll();
+    toast("Loaded cloud data");
+  } else {
+    await syncToCloud();
+  }
+}
+
+async function syncToCloud() {
+  if (!supabaseClient || !cloud.user) return;
+  if (cloud.syncing) return;
+  cloud.syncing = true;
+  const payload = {
+    user_id: cloud.user.id,
+    data: state,
+    updated_at: new Date().toISOString()
+  };
+  const { error } = await supabaseClient
+    .from("forge_profiles")
+    .upsert(payload, { onConflict: "user_id" });
+  cloud.syncing = false;
+  if (error) {
+    toast("Cloud sync failed");
+    return;
+  }
+  cloud.lastSync = Date.now();
+  toast("Synced to cloud");
+}
+
+function scheduleCloudSync() {
+  if (!cloud.user) return;
+  if (syncTimer) clearTimeout(syncTimer);
+  syncTimer = setTimeout(() => {
+    syncToCloud();
+  }, 1200);
+}
+
 function init() {
   handleInputEvents();
   setView(ui.view);
   renderAll();
   renderTools();
+  initSupabase();
   registerServiceWorker();
   setupInstallPrompt();
 }

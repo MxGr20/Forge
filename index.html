@@ -268,6 +268,22 @@
           </label>
         </div>
 
+        <div class="panel">
+          <div class="row space">
+            <h2>Cloud Sync</h2>
+            <div id="cloudStatus" class="muted small">Signed out</div>
+          </div>
+          <div class="row wrap">
+            <input type="email" id="cloudEmail" placeholder="Email for magic link">
+            <button class="primary" data-action="cloud-login" id="cloudLoginBtn">Send Magic Link</button>
+            <button class="ghost hidden" data-action="cloud-sync" id="cloudSyncBtn">Sync Now</button>
+            <button class="ghost hidden" data-action="cloud-logout" id="cloudLogoutBtn">Sign Out</button>
+          </div>
+          <div class="muted small">
+            Syncs workouts, templates, exercises, and settings across devices.
+          </div>
+        </div>
+
         <div class="tools-grid">
           <div class="panel">
             <div class="row space">
@@ -333,6 +349,7 @@
 
   <div id="toast" class="toast"></div>
 
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
   <script src="app.js"></script>
 </body>
 </html>
