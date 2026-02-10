@@ -2,6 +2,20 @@
 const STORAGE_KEY = "forge_data_v1";
 const SUPABASE_URL = "https://ruuzraihxczeeeafkbve.supabase.co";
 const SUPABASE_ANON_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InJ1dXpyYWloeGN6ZWVlYWZrYnZlIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzA2MTU5MzAsImV4cCI6MjA4NjE5MTkzMH0.OVLMNwN0e940dSd6-aZqzaFFXCY3hcbgR_-dGvF1OwE";
+const SUPABASE_AUTH_URL_KEYS = [
+  "code",
+  "type",
+  "access_token",
+  "refresh_token",
+  "expires_at",
+  "expires_in",
+  "token_type",
+  "provider_token",
+  "provider_refresh_token",
+  "error",
+  "error_code",
+  "error_description"
+];
 
 const SEED_EXERCISES = [];
 
@@ -1996,9 +2010,73 @@ function registerServiceWorker() {
   });
 }
 
-function initSupabase() {
+function updateLatestUpdateStamp() {
+  const el = $("#latestUpdate");
+  if (!el) return;
+  const raw = document.lastModified;
+  const parsed = raw ? new Date(raw) : null;
+  const date = parsed && !Number.isNaN(parsed.getTime()) ? parsed : new Date();
+  el.textContent = `Updated ${date.toLocaleString()}`;
+}
+
+function getUrlHashParams(url) {
+  return new URLSearchParams(url.hash.startsWith("#") ? url.hash.slice(1) : "");
+}
+
+function hasSupabaseAuthParams(url) {
+  const hashParams = getUrlHashParams(url);
+  const callbackType = (url.searchParams.get("type") || hashParams.get("type") || "").toLowerCase();
+  const hasAuthType = callbackType === "magiclink"
+    || callbackType === "recovery"
+    || callbackType === "invite"
+    || callbackType === "signup"
+    || callbackType === "email_change";
+  return url.searchParams.has("code")
+    || url.searchParams.has("access_token")
+    || url.searchParams.has("refresh_token")
+    || url.searchParams.has("error_code")
+    || hashParams.has("access_token")
+    || hashParams.has("refresh_token")
+    || hashParams.has("error_code")
+    || hasAuthType;
+}
+
+function stripSupabaseAuthParamsFromUrl() {
+  const url = new URL(window.location.href);
+  if (!hasSupabaseAuthParams(url)) return;
+
+  const hashParams = getUrlHashParams(url);
+  SUPABASE_AUTH_URL_KEYS.forEach((key) => {
+    url.searchParams.delete(key);
+    hashParams.delete(key);
+  });
+
+  const query = url.searchParams.toString();
+  const hash = hashParams.toString();
+  const cleanUrl = `${url.pathname}${query ? `?${query}` : ""}${hash ? `#${hash}` : ""}`;
+  window.history.replaceState({}, document.title, cleanUrl);
+}
+
+async function restoreSupabaseSessionFromUrl() {
+  if (!supabaseClient) return;
+  const url = new URL(window.location.href);
+  const code = url.searchParams.get("code");
+  if (!code) return;
+  const { error } = await supabaseClient.auth.exchangeCodeForSession(code);
+  if (error) {
+    toast("Magic link failed");
+  }
+}
+
+async function initSupabase() {
   if (!window.supabase) return;
-  supabaseClient = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+  supabaseClient = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY, {
+    auth: {
+      persistSession: true,
+      autoRefreshToken: true,
+      detectSessionInUrl: true
+    }
+  });
   supabaseClient.auth.onAuthStateChange((_event, session) => {
     cloud.user = session?.user || null;
     updateCloudUI();
@@ -2006,13 +2084,14 @@ function initSupabase() {
       loadFromCloud();
     }
   });
-  supabaseClient.auth.getSession().then(({ data }) => {
-    cloud.user = data.session?.user || null;
-    updateCloudUI();
-    if (cloud.user) {
-      loadFromCloud();
-    }
-  });
+  await restoreSupabaseSessionFromUrl();
+  const { data } = await supabaseClient.auth.getSession();
+  cloud.user = data.session?.user || null;
+  updateCloudUI();
+  if (cloud.user) {
+    loadFromCloud();
+  }
+  stripSupabaseAuthParamsFromUrl();
 }
 
 function updateCloudUI() {
@@ -2028,14 +2107,6 @@ function updateCloudUI() {
     return;
   }
 
-  function updateLatestUpdateStamp() {
-    const el = $("#latestUpdate");
-    if (!el) return;
-    const raw = document.lastModified;
-    const parsed = raw ? new Date(raw) : null;
-    const date = parsed && !Number.isNaN(parsed.getTime()) ? parsed : new Date();
-    el.textContent = `Updated ${date.toLocaleString()}`;
-  }
   if (cloud.user) {
     status.textContent = `Signed in as ${cloud.user.email || "user"}`;
     if (email) {
@@ -2139,7 +2210,9 @@ function scheduleCloudSync() {
     setView(ui.view);
     renderAll();
     renderTools();
-    initSupabase();
+    initSupabase().catch(() => {
+      updateCloudUI();
+    });
     updateLatestUpdateStamp();
     registerServiceWorker();
     setupInstallPrompt();
