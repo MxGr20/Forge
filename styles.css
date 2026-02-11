@@ -1050,6 +1050,23 @@ input[data-field="workout-name"] {
   min-height: 160px;
 }
 
+.adaptive-performance-chart {
+  position: relative;
+  transition: min-height 0.2s ease;
+}
+
+.adaptive-performance-chart.performance-stage-a {
+  min-height: 7.5rem;
+}
+
+.adaptive-performance-chart.performance-stage-b {
+  min-height: 9rem;
+}
+
+.adaptive-performance-chart.performance-stage-c {
+  min-height: 13.5rem;
+}
+
 .chart-axis {
   margin-top: 6px;
   display: flex;
@@ -1077,6 +1094,141 @@ input[data-field="workout-name"] {
 #exerciseMetricRange,
 #muscleChartRange {
   margin-top: 6px;
+}
+
+.chart-summary {
+  margin-top: 0.5rem;
+}
+
+.performance-insights {
+  margin: 0.5rem 0 0.75rem;
+}
+
+.performance-anchor-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(9.5rem, 1fr));
+  gap: 0.5rem;
+}
+
+.performance-anchor {
+  border: 1px solid rgb(var(--brand-rgb) / 0.25);
+  background: rgb(var(--brand-soft-rgb) / 0.38);
+  border-radius: 0.75rem;
+  padding: 0.5rem 0.625rem;
+  min-height: 3.25rem;
+}
+
+.performance-anchor-label {
+  font-size: 0.625rem;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--chart-axis-text);
+}
+
+.performance-anchor-value {
+  margin-top: 0.25rem;
+  font-size: 0.875rem;
+  font-weight: 700;
+  color: var(--color-on-brand);
+  line-height: 1.2;
+}
+
+.performance-anchor-value.up {
+  color: var(--color-success);
+}
+
+.performance-anchor-value.down {
+  color: var(--color-danger);
+}
+
+.performance-anchor-value.flat {
+  color: var(--chart-axis-text);
+}
+
+.performance-empty {
+  border: 1px dashed rgb(var(--brand-rgb) / 0.3);
+  border-radius: 0.875rem;
+  background: rgb(var(--brand-soft-rgb) / 0.34);
+  padding: 0.875rem 0.875rem 0.75rem;
+}
+
+.performance-empty-kicker {
+  font-size: 0.6875rem;
+  text-transform: uppercase;
+  letter-spacing: 0.1em;
+  color: var(--chart-axis-text);
+}
+
+.performance-empty-value {
+  margin-top: 0.25rem;
+  font-size: 1.75rem;
+  line-height: 2rem;
+  font-weight: 800;
+  color: var(--color-on-brand);
+}
+
+.performance-chart-wrap {
+  position: relative;
+}
+
+.performance-svg {
+  overflow: visible;
+}
+
+.performance-point {
+  cursor: pointer;
+  transition: opacity 0.15s ease;
+}
+
+.performance-point.active {
+  opacity: 1;
+}
+
+.performance-point:not(.active) {
+  opacity: 0.85;
+}
+
+.performance-tooltip {
+  position: absolute;
+  left: 0;
+  top: 0;
+  transform: translate(-50%, calc(-100% - 0.5rem));
+  pointer-events: none;
+  opacity: 0;
+  min-width: 8rem;
+  border-radius: 0.625rem;
+  border: 1px solid rgb(var(--brand-rgb) / 0.32);
+  background: rgb(15 23 51 / 0.96);
+  color: var(--color-on-brand);
+  padding: 0.5rem 0.625rem;
+  box-shadow: var(--shadow);
+  transition: opacity 0.15s ease;
+  z-index: 3;
+}
+
+.performance-tooltip.show {
+  opacity: 1;
+}
+
+.performance-tooltip-value {
+  font-size: 0.875rem;
+  font-weight: 700;
+  line-height: 1.2;
+}
+
+.performance-tooltip-date {
+  margin-top: 0.2rem;
+  font-size: 0.6875rem;
+  color: var(--chart-axis-text);
+}
+
+.performance-tooltip-badge {
+  margin-top: 0.3rem;
+  font-size: 0.625rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: var(--color-warning);
 }
 
 #muscleFilterSelect {

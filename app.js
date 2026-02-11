@@ -1809,6 +1809,464 @@ function getExercisePerformanceData(exerciseId) {
   return { sessions, totalWeight, totalReps };
 }
 
+function formatExerciseMetricValue(metric, value, options = {}) {
+  if (!Number.isFinite(value)) return "-";
+  const integerOnly = metric.key === "mostReps";
+  const decimals = integerOnly ? 0 : (Math.abs(value) >= 100 ? 0 : 1);
+  const numeric = value.toFixed(decimals).replace(/\.0$/, "");
+  if (options.withUnit === false) return numeric;
+  if (metric.unit === "reps") return `${numeric} reps`;
+  if (metric.unit) return `${numeric} ${metric.unit}`;
+  return numeric;
+}
+
+function formatSignedPercent(pct) {
+  if (!Number.isFinite(pct)) return "n/a";
+  const sign = pct > 0 ? "+" : "";
+  return `${sign}${pct.toFixed(1)}%`;
+}
+
+function formatSignedDelta(metric, delta) {
+  if (!Number.isFinite(delta)) return "-";
+  const sign = delta > 0 ? "+" : "";
+  return `${sign}${formatExerciseMetricValue(metric, delta, { withUnit: true })}`;
+}
+
+function computeNextGoal(metric, bestValue) {
+  if (!Number.isFinite(bestValue) || bestValue <= 0) return null;
+  if (metric.key === "mostReps") {
+    return Math.max(Math.round(bestValue) + 1, Math.ceil(bestValue * 1.05));
+  }
+  const step = bestValue >= 180 ? 5 : bestValue >= 100 ? 2.5 : 1.25;
+  let goal = Math.ceil((bestValue * 1.03) / step) * step;
+  if (goal <= bestValue) goal = bestValue + step;
+  const decimals = Number.isInteger(step) ? 0 : (step % 0.5 === 0 ? 1 : 2);
+  return Number(goal.toFixed(decimals));
+}
+
+function computeTrendLine(values) {
+  if (!Array.isArray(values) || values.length < 2) return null;
+  const n = values.length;
+  let sumX = 0;
+  let sumY = 0;
+  let sumXY = 0;
+  let sumXX = 0;
+  values.forEach((y, x) => {
+    sumX += x;
+    sumY += y;
+    sumXY += x * y;
+    sumXX += x * x;
+  });
+  const denominator = (n * sumXX) - (sumX * sumX);
+  if (Math.abs(denominator) < 1e-9) return null;
+  const slope = ((n * sumXY) - (sumX * sumY)) / denominator;
+  const intercept = (sumY - (slope * sumX)) / n;
+  return { slope, intercept };
+}
+
+function computeExercisePerformanceSnapshot(chartData, metric) {
+  const count = chartData.length;
+  const values = chartData.map((entry) => Number.isFinite(entry.value) ? entry.value : 0);
+  const firstValue = count ? values[0] : null;
+  const latestValue = count ? values[count - 1] : null;
+  const delta = count > 1 ? latestValue - firstValue : null;
+  const pctChange = count > 1 && Math.abs(firstValue) > 1e-9
+    ? (delta / Math.abs(firstValue)) * 100
+    : null;
+  const direction = !Number.isFinite(delta) || Math.abs(delta) < 1e-9
+    ? "flat"
+    : delta > 0
+      ? "up"
+      : "down";
+
+  let bestIndex = -1;
+  let bestValue = null;
+  values.forEach((value, idx) => {
+    if (!Number.isFinite(bestValue) || value > bestValue) {
+      bestValue = value;
+      bestIndex = idx;
+    }
+  });
+
+  const previousCandidates = values
+    .map((value, idx) => ({ value, idx }))
+    .filter((entry) => entry.idx !== bestIndex && entry.value < (bestValue - 1e-9))
+    .sort((a, b) => b.value - a.value);
+  const previousBestValue = previousCandidates[0]?.value ?? null;
+  const previousBestIndex = previousCandidates[0]?.idx ?? -1;
+
+  const average = count
+    ? values.reduce((sum, value) => sum + value, 0) / count
+    : null;
+
+  let monthlyAverage = null;
+  let monthlyLabel = "";
+  if (count) {
+    const latestDate = new Date(chartData[count - 1].date);
+    monthlyLabel = latestDate.toLocaleDateString(undefined, { month: "short", year: "numeric" });
+    const monthlyValues = chartData
+      .filter((entry) => {
+        const date = new Date(entry.date);
+        return date.getMonth() === latestDate.getMonth() && date.getFullYear() === latestDate.getFullYear();
+      })
+      .map((entry) => entry.value)
+      .filter((value) => Number.isFinite(value));
+    if (monthlyValues.length) {
+      monthlyAverage = monthlyValues.reduce((sum, value) => sum + value, 0) / monthlyValues.length;
+    }
+  }
+
+  const nextGoal = computeNextGoal(metric, bestValue);
+  const latestIsPr = count ? Math.abs(latestValue - bestValue) < 1e-9 : false;
+
+  let screenReaderSummary = "No workout sessions found for this exercise and range.";
+  if (count === 1) {
+    screenReaderSummary = `One session recorded. Latest ${metric.label.toLowerCase()} is ${formatExerciseMetricValue(metric, latestValue)}.`;
+  } else if (count > 1) {
+    const movement = direction === "up" ? "increased" : direction === "down" ? "decreased" : "stayed the same";
+    screenReaderSummary = `${metric.label} ${movement} from ${formatExerciseMetricValue(metric, firstValue)} to ${formatExerciseMetricValue(metric, latestValue)} across ${count} sessions. Best is ${formatExerciseMetricValue(metric, bestValue)}.`;
+  }
+
+  return {
+    count,
+    values,
+    firstValue,
+    latestValue,
+    delta,
+    pctChange,
+    direction,
+    bestValue,
+    bestIndex,
+    previousBestValue,
+    previousBestIndex,
+    average,
+    monthlyAverage,
+    monthlyLabel,
+    nextGoal,
+    latestIsPr,
+    screenReaderSummary
+  };
+}
+
+function performanceDirectionLabel(direction) {
+  if (direction === "up") return "Improved";
+  if (direction === "down") return "Declined";
+  return "Stable";
+}
+
+function performanceDirectionGlyph(direction) {
+  if (direction === "up") return "▲";
+  if (direction === "down") return "▼";
+  return "•";
+}
+
+function renderExercisePerformanceStageA(container, metric, latestEntry, snapshot) {
+  if (!container) return;
+  const latestValueLabel = latestEntry
+    ? formatExerciseMetricValue(metric, latestEntry.value)
+    : "—";
+  const countLabel = snapshot.count === 0
+    ? "No workouts in this range yet."
+    : "Only 1 workout recorded in this range.";
+
+  container.classList.add("performance-stage-a");
+  container.classList.remove("performance-stage-b", "performance-stage-c");
+  container.innerHTML = `
+    <div class="performance-empty">
+      <div class="performance-empty-kicker">Latest ${esc(metric.label)}</div>
+      <div class="performance-empty-value">${esc(latestValueLabel)}</div>
+      <div class="muted small">${esc(countLabel)}</div>
+      <div class="muted small">Log more workouts to see performance trends.</div>
+    </div>
+  `;
+}
+
+function renderExercisePerformanceStageB(container, metric, chartData, color, snapshot) {
+  if (!container) return;
+  const width = 340;
+  const height = 120;
+  const left = 10;
+  const right = 10;
+  const top = 10;
+  const bottom = 24;
+  const plotWidth = width - left - right;
+  const plotHeight = height - top - bottom;
+  const values = snapshot.values;
+  let minValue = Math.min(...values);
+  let maxValue = Math.max(...values);
+  if (Math.abs(maxValue - minValue) < 1e-9) {
+    maxValue += 1;
+    minValue -= 1;
+  }
+  const pad = Math.max((maxValue - minValue) * 0.2, 0.5);
+  const min = minValue - pad;
+  const max = maxValue + pad;
+  const span = max - min || 1;
+  const stepX = chartData.length > 1 ? plotWidth / (chartData.length - 1) : 0;
+  const points = chartData.map((entry, idx) => {
+    const x = left + (stepX * idx);
+    const y = top + ((max - entry.value) / span) * plotHeight;
+    return { x, y, value: entry.value, label: entry.label };
+  });
+  const polyline = points.map((point) => `${point.x},${point.y}`).join(" ");
+  const bestPoint = points[snapshot.bestIndex] || points[points.length - 1];
+  const latestPoint = points[points.length - 1];
+  const axisColor = cssVar("--chart-axis-text", "#AAB3C5");
+
+  container.classList.add("performance-stage-b");
+  container.classList.remove("performance-stage-a", "performance-stage-c");
+  container.innerHTML = `
+    <svg viewBox="0 0 ${width} ${height}" width="100%" height="120" preserveAspectRatio="none">
+      <line x1="${left}" y1="${height - bottom}" x2="${width - right}" y2="${height - bottom}" stroke="${axisColor}" stroke-opacity="0.35" stroke-width="1" />
+      <polyline points="${polyline}" fill="none" stroke="${color}" stroke-width="2.8" stroke-linecap="round" stroke-linejoin="round" />
+      ${points.map((point, idx) => `<circle cx="${point.x}" cy="${point.y}" r="${idx === points.length - 1 ? 3.2 : 2.2}" fill="${color}" />`).join("")}
+      <circle cx="${bestPoint.x}" cy="${bestPoint.y}" r="4.4" fill="none" stroke="${cssVar("--color-warning", "#F59E0B")}" stroke-width="2" />
+      <text x="${bestPoint.x}" y="${Math.max(10, bestPoint.y - 8)}" fill="${axisColor}" font-size="10" text-anchor="middle">Best so far</text>
+    </svg>
+    <div class="chart-axis">
+      <span>${esc(chartData[0]?.label || "")}</span>
+      <span>${esc(latestPoint?.label || "")}</span>
+    </div>
+  `;
+}
+
+function attachExercisePerformanceTooltip(container, chartData, points, metric, snapshot, width, height) {
+  const tooltip = container.querySelector(".performance-tooltip");
+  const svg = container.querySelector(".performance-svg");
+  const pointEls = Array.from(container.querySelectorAll(".performance-point"));
+  if (!tooltip || !svg || !pointEls.length) return;
+
+  const hide = () => {
+    tooltip.classList.remove("show");
+    pointEls.forEach((point) => point.classList.remove("active"));
+  };
+
+  const show = (idx) => {
+    const entry = chartData[idx];
+    const point = points[idx];
+    if (!entry || !point) return;
+    const valueText = formatExerciseMetricValue(metric, entry.value);
+    const prTag = Math.abs(entry.value - snapshot.bestValue) < 1e-9
+      ? "<div class=\"performance-tooltip-badge\">Personal record</div>"
+      : "";
+    tooltip.innerHTML = `
+      <div class="performance-tooltip-value">${esc(valueText)}</div>
+      <div class="performance-tooltip-date">${esc(formatDateTime(entry.date))}</div>
+      ${prTag}
+    `;
+    tooltip.style.left = `${(point.x / width) * 100}%`;
+    tooltip.style.top = `${(point.y / height) * 100}%`;
+    tooltip.classList.add("show");
+    pointEls.forEach((pointEl, pointIdx) => {
+      pointEl.classList.toggle("active", pointIdx === idx);
+    });
+  };
+
+  pointEls.forEach((pointEl) => {
+    const idx = parseInt(pointEl.dataset.index || "-1", 10);
+    if (!Number.isFinite(idx) || idx < 0) return;
+    pointEl.addEventListener("pointerenter", () => show(idx));
+    pointEl.addEventListener("pointerdown", () => show(idx));
+    pointEl.addEventListener("focus", () => show(idx));
+    pointEl.addEventListener("blur", hide);
+  });
+
+  svg.addEventListener("pointerleave", hide);
+}
+
+function renderExercisePerformanceStageC(container, metric, chartData, color, snapshot) {
+  if (!container) return;
+  const width = 360;
+  const height = 210;
+  const left = 42;
+  const right = 12;
+  const top = 16;
+  const bottom = 30;
+  const plotWidth = width - left - right;
+  const plotHeight = height - top - bottom;
+  const axis = buildNumericAxis(snapshot.values, {
+    tickCount: 6,
+    forceZero: false,
+    integerOnly: metric.key === "mostReps"
+  });
+  const span = axis.max - axis.min || 1;
+  const stepX = chartData.length > 1 ? plotWidth / (chartData.length - 1) : 0;
+  const gridStroke = cssVar("--chart-grid-stroke", "rgba(170, 179, 197, 0.24)");
+  const axisColor = cssVar("--chart-axis-text", "#AAB3C5");
+  const prColor = cssVar("--color-warning", "#F59E0B");
+
+  const points = chartData.map((entry, idx) => {
+    const x = left + (stepX * idx);
+    const y = top + ((axis.max - entry.value) / span) * plotHeight;
+    return { x, y, value: entry.value, label: entry.label };
+  });
+
+  const gridLines = axis.ticks.map((tick) => {
+    const y = top + ((axis.max - tick) / span) * plotHeight;
+    const tickLabel = formatExerciseMetricValue(metric, tick, { withUnit: false });
+    return `
+      <line x1="${left}" y1="${y}" x2="${width - right}" y2="${y}" stroke="${gridStroke}" stroke-width="1" stroke-dasharray="2 4" />
+      <text x="${left - 6}" y="${y + 3}" fill="${axisColor}" font-size="10" text-anchor="end">${esc(tickLabel)}</text>
+    `;
+  }).join("");
+
+  const dataLine = points.map((point) => `${point.x},${point.y}`).join(" ");
+  const trend = computeTrendLine(snapshot.values);
+  const trendLine = trend
+    ? points.map((_point, idx) => {
+      const trendValue = trend.intercept + (trend.slope * idx);
+      const x = left + (stepX * idx);
+      const y = top + ((axis.max - trendValue) / span) * plotHeight;
+      return `${x},${y}`;
+    }).join(" ")
+    : "";
+
+  const averageY = Number.isFinite(snapshot.average)
+    ? top + ((axis.max - snapshot.average) / span) * plotHeight
+    : null;
+  const bestPoint = points[snapshot.bestIndex] || null;
+  const previousPoint = snapshot.previousBestIndex >= 0 ? points[snapshot.previousBestIndex] : null;
+
+  container.classList.add("performance-stage-c");
+  container.classList.remove("performance-stage-a", "performance-stage-b");
+  container.innerHTML = `
+    <div class="performance-chart-wrap">
+      <svg class="performance-svg" viewBox="0 0 ${width} ${height}" width="100%" height="210" preserveAspectRatio="none">
+        <text x="${left}" y="${top - 4}" fill="${axisColor}" font-size="10">${esc(metric.unit || "value")}</text>
+        ${gridLines}
+        ${Number.isFinite(averageY) ? `
+          <line x1="${left}" y1="${averageY}" x2="${width - right}" y2="${averageY}" stroke="${axisColor}" stroke-width="1" stroke-dasharray="4 4" />
+          <text x="${width - right}" y="${Math.max(10, averageY - 6)}" fill="${axisColor}" font-size="10" text-anchor="end">Avg ${esc(formatExerciseMetricValue(metric, snapshot.average))}</text>
+        ` : ""}
+        ${trendLine ? `<polyline points="${trendLine}" fill="none" stroke="${axisColor}" stroke-opacity="0.55" stroke-width="1.5" stroke-dasharray="5 4" />` : ""}
+        <polyline points="${dataLine}" fill="none" stroke="${color}" stroke-width="2.7" stroke-linecap="round" stroke-linejoin="round" />
+        ${points.map((point, idx) => `
+          <circle
+            class="performance-point"
+            data-index="${idx}"
+            tabindex="0"
+            cx="${point.x}"
+            cy="${point.y}"
+            r="${idx === snapshot.bestIndex ? 4.2 : 3}"
+            fill="${idx === snapshot.bestIndex ? prColor : color}"
+          />
+        `).join("")}
+        ${bestPoint ? `
+          <circle cx="${bestPoint.x}" cy="${bestPoint.y}" r="7" fill="none" stroke="${prColor}" stroke-width="1.8" />
+          <text x="${bestPoint.x}" y="${Math.max(12, bestPoint.y - 10)}" fill="${prColor}" font-size="10" text-anchor="middle">PR</text>
+        ` : ""}
+        ${previousPoint ? `
+          <rect x="${previousPoint.x - 3.2}" y="${previousPoint.y - 3.2}" width="6.4" height="6.4" transform="rotate(45 ${previousPoint.x} ${previousPoint.y})" fill="none" stroke="${axisColor}" stroke-width="1.4" />
+          <text x="${previousPoint.x}" y="${Math.max(12, previousPoint.y - 9)}" fill="${axisColor}" font-size="10" text-anchor="middle">Prev best</text>
+        ` : ""}
+      </svg>
+      ${buildChartAxis(chartData.map((entry) => entry.label), 4)}
+      <div class="performance-tooltip"></div>
+    </div>
+  `;
+
+  attachExercisePerformanceTooltip(container, chartData, points, metric, snapshot, width, height);
+}
+
+function renderAdaptiveExercisePerformance(metric, chartData, cutoffDate, fallbackSessions = []) {
+  const chartEl = $("#exerciseMetricChart");
+  const insightsEl = $("#exerciseMetricInsights");
+  const rangeEl = $("#exerciseMetricRange");
+  const summaryEl = $("#exerciseMetricSummary");
+  if (!chartEl || !insightsEl || !rangeEl || !summaryEl) return;
+
+  const snapshot = computeExercisePerformanceSnapshot(chartData, metric);
+  const stage = snapshot.count <= 1 ? "a" : snapshot.count < 5 ? "b" : "c";
+  const color = resolveMetricColor(metric.metricColorKey || metric.key);
+  const fallbackLatestSession = fallbackSessions.length
+    ? fallbackSessions[fallbackSessions.length - 1]
+    : null;
+  const fallbackLatestEntry = fallbackLatestSession
+    ? {
+      date: fallbackLatestSession.date,
+      value: Number.isFinite(fallbackLatestSession[metric.key]) ? fallbackLatestSession[metric.key] : null
+    }
+    : null;
+  const latestEntry = chartData[chartData.length - 1] || fallbackLatestEntry || null;
+  const startDate = chartData[0]?.date || cutoffDate;
+  const endDate = chartData[chartData.length - 1]?.date || latestEntry?.date || new Date();
+  const stageHint = stage === "a"
+    ? "Trend visible after 5 sessions."
+    : stage === "b"
+      ? `Early trend from ${snapshot.count} sessions. Trend visible after 5 sessions.`
+      : "Mature trend view with average line, PR, and tooltips.";
+
+  const directionClass = snapshot.direction === "up"
+    ? "up"
+    : snapshot.direction === "down"
+      ? "down"
+      : "flat";
+  const changeSummary = snapshot.count > 1
+    ? `${performanceDirectionGlyph(snapshot.direction)} ${formatSignedPercent(snapshot.pctChange)}`
+    : "Need more sessions";
+  const comparedTo = chartData[0]?.date
+    ? `Compared to ${formatDate(chartData[0].date)}`
+    : latestEntry?.date
+      ? `Latest logged on ${formatDate(latestEntry.date)}`
+      : "No baseline yet";
+  const bestText = Number.isFinite(snapshot.bestValue)
+    ? formatExerciseMetricValue(metric, snapshot.bestValue)
+    : "-";
+  const avgText = Number.isFinite(snapshot.average)
+    ? formatExerciseMetricValue(metric, snapshot.average)
+    : "-";
+  const monthlyText = Number.isFinite(snapshot.monthlyAverage)
+    ? formatExerciseMetricValue(metric, snapshot.monthlyAverage)
+    : "-";
+  const goalText = Number.isFinite(snapshot.nextGoal)
+    ? formatExerciseMetricValue(metric, snapshot.nextGoal)
+    : "-";
+
+  insightsEl.innerHTML = `
+    <div class="performance-anchor-grid">
+      <div class="performance-anchor">
+        <div class="performance-anchor-label">Did I Improve?</div>
+        <div class="performance-anchor-value ${directionClass}">${esc(changeSummary)}</div>
+      </div>
+      <div class="performance-anchor">
+        <div class="performance-anchor-label">Compared To</div>
+        <div class="performance-anchor-value">${esc(comparedTo)}</div>
+      </div>
+      <div class="performance-anchor">
+        <div class="performance-anchor-label">Best So Far</div>
+        <div class="performance-anchor-value">${esc(bestText)}${snapshot.latestIsPr ? " · PR" : ""}</div>
+      </div>
+      <div class="performance-anchor">
+        <div class="performance-anchor-label">Next Aim</div>
+        <div class="performance-anchor-value">${esc(goalText)}</div>
+      </div>
+      <div class="performance-anchor">
+        <div class="performance-anchor-label">Session Average</div>
+        <div class="performance-anchor-value">${esc(avgText)}</div>
+      </div>
+      <div class="performance-anchor">
+        <div class="performance-anchor-label">Monthly Avg${snapshot.monthlyLabel ? ` (${esc(snapshot.monthlyLabel)})` : ""}</div>
+        <div class="performance-anchor-value">${esc(monthlyText)}</div>
+      </div>
+    </div>
+  `;
+
+  if (stage === "a") {
+    renderExercisePerformanceStageA(chartEl, metric, latestEntry, snapshot);
+  } else if (stage === "b") {
+    renderExercisePerformanceStageB(chartEl, metric, chartData, color, snapshot);
+  } else {
+    renderExercisePerformanceStageC(chartEl, metric, chartData, color, snapshot);
+  }
+
+  const interpretation = snapshot.count > 1
+    ? `${performanceDirectionLabel(snapshot.direction)} by ${formatSignedDelta(metric, snapshot.delta)}.`
+    : "No trend yet.";
+  const prCopy = snapshot.latestIsPr && snapshot.count > 1 ? "New personal best." : "";
+  rangeEl.textContent = `Visualized range: ${formatDateRange(startDate, endDate)} · ${stageHint} ${interpretation} ${prCopy}`.trim();
+  summaryEl.textContent = snapshot.screenReaderSummary;
+}
+
 function buildChartAxis(labels, slots = 4) {
   if (!labels.length) return "";
   const normalizedSlots = Math.max(2, Math.min(slots, labels.length));
@@ -2321,12 +2779,9 @@ function renderStats() {
   if (!ui.statsExerciseId) {
     if (totalWeightEl) totalWeightEl.textContent = "-";
     if (totalRepsEl) totalRepsEl.textContent = "-";
-    renderLineChart(
-      $("#exerciseMetricChart"),
-      [],
-      resolveMetricColor(selectedMetric.metricColorKey || selectedMetric.key)
-    );
-    if (rangeEl) rangeEl.textContent = "";
+    const cutoff = getMonthsBackCutoff(ui.statsMonthsBack);
+    renderAdaptiveExercisePerformance(selectedMetric, [], cutoff, []);
+    if (rangeEl) rangeEl.textContent = "No sessions in selected range. Log workouts to unlock trend feedback.";
   } else {
     const performance = getExercisePerformanceData(ui.statsExerciseId);
     if (totalWeightEl) {
@@ -2350,14 +2805,7 @@ function renderStats() {
         label: formatDate(session.date),
         value: Number.isFinite(session[selectedMetric.key]) ? session[selectedMetric.key] : 0
       }));
-    renderLineChart($("#exerciseMetricChart"), chartData, resolveMetricColor(selectedMetric.metricColorKey || selectedMetric.key), {
-      integerOnly: selectedMetric.key === "mostReps"
-    });
-    if (rangeEl) {
-      const start = chartData[0]?.date || cutoff;
-      const end = chartData[chartData.length - 1]?.date || new Date();
-      rangeEl.textContent = `Visualized range: ${formatDateRange(start, end)} · Metric: ${selectedMetric.label}`;
-    }
+    renderAdaptiveExercisePerformance(selectedMetric, chartData, cutoff, performance.sessions);
   }
 
   renderMuscleGroupSection();
