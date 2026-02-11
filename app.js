@@ -79,6 +79,18 @@ const DEFAULT_STATE = {
   activeWorkoutId: null
 };
 
+const THEME_STORAGE_KEY = "forge_theme_mode";
+const THEME_OPTIONS = new Set(["light", "dark"]);
+const VIEW_TITLES = {
+  workouts: "Workouts",
+  session: "Workout",
+  routines: "Templates",
+  exercises: "Exercises",
+  stats: "Statistics",
+  history: "History",
+  tools: "Tools"
+};
+
 const ui = {
   view: "workouts",
   editRoutineId: null,
@@ -101,26 +113,54 @@ const ui = {
 };
 
 const BODY_MEASUREMENT_FIELDS = [
-  { key: "bodyWeight", label: "Body Weight", unit: "kg", decimals: 1, color: "#4dabf7" },
-  { key: "muscleWeight", label: "Muscle Weight", unit: "kg", decimals: 1, color: "#20c997" },
-  { key: "boneWeight", label: "Bone Weight", unit: "kg", decimals: 1, color: "#ffd43b" },
-  { key: "bodyFat", label: "Body Fat", unit: "%", decimals: 1, color: "#ff6b6b" },
-  { key: "tbw", label: "TBW", unit: "%", decimals: 1, color: "#74c0fc" },
-  { key: "bmi", label: "BMI", unit: "", decimals: 1, color: "#c77dff" }
+  { key: "bodyWeight", label: "Body Weight", unit: "kg", decimals: 1, metricColorKey: "bodyWeight" },
+  { key: "muscleWeight", label: "Muscle Weight", unit: "kg", decimals: 1, metricColorKey: "muscleWeight" },
+  { key: "boneWeight", label: "Bone Weight", unit: "kg", decimals: 1, metricColorKey: "boneWeight" },
+  { key: "bodyFat", label: "Body Fat", unit: "%", decimals: 1, metricColorKey: "bodyFat" },
+  { key: "tbw", label: "TBW", unit: "%", decimals: 1, metricColorKey: "tbw" },
+  { key: "bmi", label: "BMI", unit: "", decimals: 1, metricColorKey: "bmi" }
 ];
 
 const EXERCISE_STATS_METRICS = [
-  { key: "heaviestWeight", label: "Heaviest Weight Lifted", color: "#4dabf7", unit: "kg" },
-  { key: "oneRmBrzycki", label: "Projected / True 1RM (Brzycki)", color: "#b197ff", unit: "kg" },
-  { key: "bestSetVolume", label: "Best Set Volume", color: "#51cf66", unit: "kg" },
-  { key: "bestSessionVolume", label: "Best Session Volume", color: "#ffd43b", unit: "kg" },
-  { key: "mostReps", label: "Most Reps Done", color: "#ff8787", unit: "reps" }
+  { key: "heaviestWeight", label: "Heaviest Weight Lifted", metricColorKey: "heaviestWeight", unit: "kg" },
+  { key: "oneRmBrzycki", label: "Projected / True 1RM (Brzycki)", metricColorKey: "oneRmBrzycki", unit: "kg" },
+  { key: "bestSetVolume", label: "Best Set Volume", metricColorKey: "bestSetVolume", unit: "kg" },
+  { key: "bestSessionVolume", label: "Best Session Volume", metricColorKey: "bestSessionVolume", unit: "kg" },
+  { key: "mostReps", label: "Most Reps Done", metricColorKey: "mostReps", unit: "reps" }
 ];
 
-const MUSCLE_CHART_COLORS = ["#4dabf7", "#51cf66", "#ffd43b", "#ff8787", "#b197ff", "#20c997", "#ffa94d", "#74c0fc"];
+const MUSCLE_CHART_COLORS = [
+  "var(--chart-series-1)",
+  "var(--chart-series-2)",
+  "var(--chart-series-3)",
+  "var(--chart-series-4)",
+  "var(--chart-series-5)",
+  "var(--chart-series-6)",
+  "var(--chart-series-7)",
+  "var(--chart-series-8)"
+];
 
 const $ = (sel, root = document) => root.querySelector(sel);
 const $$ = (sel, root = document) => Array.from(root.querySelectorAll(sel));
+
+function cssVar(name, fallback = "") {
+  if (typeof window === "undefined") return fallback;
+  const value = getComputedStyle(document.documentElement).getPropertyValue(name).trim();
+  return value || fallback;
+}
+
+function resolveMetricColor(metricKey, fallback = "#4F66FF") {
+  const configured = window.FORGE_COLORS?.getMetricColor?.(metricKey);
+  if (configured) return configured;
+  const token = cssVar(`--metric-${metricKey}`, "");
+  return token || fallback;
+}
+
+function resolveSeriesColor(index, fallback = "#4F66FF") {
+  const configured = window.FORGE_COLORS?.getSeriesColor?.(index);
+  if (configured) return configured;
+  return cssVar(`--chart-series-${(Math.abs(index) % 8) + 1}`, fallback);
+}
 
 function esc(str = "") {
   return String(str).replace(/[&<>"']/g, (ch) => {
@@ -506,6 +546,60 @@ function stopTimer(clear = true) {
   updateTimerUI();
 }
 
+function getPreferredTheme() {
+  const saved = localStorage.getItem(THEME_STORAGE_KEY);
+  if (THEME_OPTIONS.has(saved)) return saved;
+  if (typeof window.matchMedia !== "function") return "light";
+  return window.matchMedia("(prefers-color-scheme: dark)").matches ? "dark" : "light";
+}
+
+function updateThemeMetaColor(theme) {
+  const meta = document.querySelector("meta[name='theme-color']");
+  if (!meta) return;
+  const color = theme === "dark"
+    ? cssVar("--color-app-bg", "#0B1024")
+    : cssVar("--color-app-bg", "#F6F8FC");
+  meta.setAttribute("content", color);
+}
+
+function updateThemeSwitchLabel(theme) {
+  const label = $("#themeSwitchLabel");
+  if (label) label.textContent = theme === "dark" ? "Dark" : "Light";
+  const toggle = $("#themeSwitch");
+  if (toggle) toggle.setAttribute("aria-pressed", theme === "dark" ? "true" : "false");
+}
+
+function applyTheme(theme, options = {}) {
+  const mode = theme === "dark" ? "dark" : "light";
+  document.body.dataset.theme = mode;
+  document.documentElement.dataset.theme = mode;
+  if (window.FORGE_COLORS?.applyTheme) {
+    window.FORGE_COLORS.applyTheme(mode);
+  }
+  if (options.persist !== false) {
+    localStorage.setItem(THEME_STORAGE_KEY, mode);
+  }
+  updateThemeSwitchLabel(mode);
+  updateThemeMetaColor(mode);
+}
+
+function toggleTheme() {
+  const current = document.body.dataset.theme === "dark" ? "dark" : "light";
+  const next = current === "dark" ? "light" : "dark";
+  applyTheme(next);
+  renderStats();
+  renderLog();
+  renderHistory();
+  renderExercises();
+  renderTools();
+}
+
+function updateMenuContextLabel(view) {
+  const label = $("#menuContextLabel");
+  if (!label) return;
+  label.textContent = VIEW_TITLES[view] || "Workouts";
+}
+
   function setView(view) {
     const resolvedView = view === "workouts" && getActiveWorkout() ? "session" : view;
     ui.view = resolvedView;
@@ -516,6 +610,7 @@ function stopTimer(clear = true) {
     $$(".nav-btn").forEach((btn) => {
       btn.classList.toggle("active", btn.dataset.view === navView);
     });
+    updateMenuContextLabel(resolvedView);
   }
 
 function startWorkout(routineId = null) {
@@ -1803,6 +1898,9 @@ function renderLineChart(container, data, color, options = {}) {
   });
   const span = axis.max - axis.min || 1;
   const stepX = data.length > 1 ? plotWidth / (data.length - 1) : 0;
+  const gridStroke = cssVar("--chart-grid-stroke", "rgba(71, 85, 105, 0.18)");
+  const axisColor = cssVar("--chart-axis-text", "#64748B");
+  const lineColor = color || cssVar("--chart-series-1", "#4F66FF");
 
   const points = data.map((entry, idx) => {
     const x = left + stepX * idx;
@@ -1817,18 +1915,18 @@ function renderLineChart(container, data, color, options = {}) {
       ? options.tickFormatter(tick)
       : defaultTickFormatter(tick, { integerOnly: !!options.integerOnly });
     return `
-      <line x1="${left}" y1="${y}" x2="${width - right}" y2="${y}" stroke="rgba(255,255,255,0.13)" stroke-width="1" stroke-dasharray="2 3" />
-      <text x="${left - 6}" y="${y + 3}" fill="#9da3b4" font-size="10" text-anchor="end">${esc(tickLabel)}</text>
+      <line x1="${left}" y1="${y}" x2="${width - right}" y2="${y}" stroke="${gridStroke}" stroke-width="1" stroke-dasharray="2 3" />
+      <text x="${left - 6}" y="${y + 3}" fill="${axisColor}" font-size="10" text-anchor="end">${esc(tickLabel)}</text>
     `;
   }).join("");
 
   const polyline = points.map((point) => `${point.x},${point.y}`).join(" ");
-  const dots = points.map((point) => `<circle cx="${point.x}" cy="${point.y}" r="2.6" fill="${color}" />`).join("");
+  const dots = points.map((point) => `<circle cx="${point.x}" cy="${point.y}" r="2.6" fill="${lineColor}" />`).join("");
 
   container.innerHTML = `
     <svg viewBox="0 0 ${width} ${height}" width="100%" height="180" preserveAspectRatio="none">
       ${gridLines}
-      <polyline points="${polyline}" fill="none" stroke="${color}" stroke-width="2.8" stroke-linecap="round" stroke-linejoin="round" />
+      <polyline points="${polyline}" fill="none" stroke="${lineColor}" stroke-width="2.8" stroke-linecap="round" stroke-linejoin="round" />
       ${dots}
     </svg>
     ${buildChartAxis(data.map((entry) => entry.label), 4)}
@@ -1857,12 +1955,14 @@ function renderMultiLineChart(container, labels, series, options = {}) {
   });
   const span = axis.max - axis.min || 1;
   const stepX = labels.length > 1 ? plotWidth / (labels.length - 1) : 0;
+  const gridStroke = cssVar("--chart-grid-stroke", "rgba(71, 85, 105, 0.18)");
+  const axisColor = cssVar("--chart-axis-text", "#64748B");
 
   const gridLines = axis.ticks.map((tick) => {
     const y = top + ((axis.max - tick) / span) * plotHeight;
     return `
-      <line x1="${left}" y1="${y}" x2="${width - right}" y2="${y}" stroke="rgba(255,255,255,0.13)" stroke-width="1" stroke-dasharray="2 3" />
-      <text x="${left - 6}" y="${y + 3}" fill="#9da3b4" font-size="10" text-anchor="end">${Math.round(tick)}</text>
+      <line x1="${left}" y1="${y}" x2="${width - right}" y2="${y}" stroke="${gridStroke}" stroke-width="1" stroke-dasharray="2 3" />
+      <text x="${left - 6}" y="${y + 3}" fill="${axisColor}" font-size="10" text-anchor="end">${Math.round(tick)}</text>
     `;
   }).join("");
 
@@ -1978,7 +2078,7 @@ function computeMuscleVolumeSeries(grouping, monthsBack, dimension, selectedMusc
   const labels = ordered.map((entry) => entry.label);
   const series = selectedMuscles.map((muscle, idx) => ({
     name: muscle,
-    color: MUSCLE_CHART_COLORS[idx % MUSCLE_CHART_COLORS.length],
+    color: resolveSeriesColor(idx, MUSCLE_CHART_COLORS[idx % MUSCLE_CHART_COLORS.length]),
     values: ordered.map((entry) => entry.counts[muscle] || 0)
   }))
     .map((entry) => ({
@@ -2099,7 +2199,11 @@ function renderStats() {
   if (!ui.statsExerciseId) {
     if (totalWeightEl) totalWeightEl.textContent = "-";
     if (totalRepsEl) totalRepsEl.textContent = "-";
-    renderLineChart($("#exerciseMetricChart"), [], selectedMetric.color);
+    renderLineChart(
+      $("#exerciseMetricChart"),
+      [],
+      resolveMetricColor(selectedMetric.metricColorKey || selectedMetric.key)
+    );
     if (rangeEl) rangeEl.textContent = "";
   } else {
     const performance = getExercisePerformanceData(ui.statsExerciseId);
@@ -2124,7 +2228,7 @@ function renderStats() {
         label: formatDate(session.date),
         value: Number.isFinite(session[selectedMetric.key]) ? session[selectedMetric.key] : 0
       }));
-    renderLineChart($("#exerciseMetricChart"), chartData, selectedMetric.color, {
+    renderLineChart($("#exerciseMetricChart"), chartData, resolveMetricColor(selectedMetric.metricColorKey || selectedMetric.key), {
       integerOnly: selectedMetric.key === "mostReps"
     });
     if (rangeEl) {
@@ -2186,7 +2290,7 @@ function renderBodyMeasurementSection() {
   const chartData = getSortedBodyMeasurements()
     .filter((entry) => Number.isFinite(entry[metric.key]))
     .map((entry) => ({ label: formatDate(entry.createdAt), value: entry[metric.key] }));
-  renderLineChart($("#measurementChart"), chartData, metric.color);
+  renderLineChart($("#measurementChart"), chartData, resolveMetricColor(metric.metricColorKey || metric.key));
 }
 
 function saveBodyMeasurement() {
@@ -2669,6 +2773,10 @@ function handleInputEvents() {
       const button = event.target.closest("[data-action]");
       if (!button) return;
       const action = button.dataset.action;
+      if (action === "toggle-theme") {
+        toggleTheme();
+        return;
+      }
       if (action === "nav") {
         const next = button.dataset.view;
         if (next === "workouts" && getActiveWorkout()) {
@@ -3217,6 +3325,7 @@ function scheduleCloudSync() {
 
   function init() {
     handleInputEvents();
+    applyTheme(getPreferredTheme(), { persist: false });
     setView(ui.view);
     renderAll();
     renderTools();

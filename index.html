@@ -6,16 +6,32 @@
   <title>Forge Log</title>
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-  <link href="https://fonts.googleapis.com/css2?family=Sora:wght@400;500;600;700&family=Unbounded:wght@500;600&display=swap" rel="stylesheet">
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=Space+Grotesk:wght@500;600;700&display=swap" rel="stylesheet">
   <link rel="stylesheet" href="styles.css">
   <link rel="manifest" href="manifest.json">
   <link rel="icon" href="icon.svg" type="image/svg+xml">
   <link rel="apple-touch-icon" href="icon.svg">
   <meta name="apple-mobile-web-app-capable" content="yes">
-  <meta name="theme-color" content="#b197ff">
+  <meta name="theme-color" content="#F6F8FC">
 </head>
 <body>
   <div class="app">
+    <header class="menu-bar">
+      <div class="menu-copy">
+        <div class="menu-eyebrow">Forge</div>
+        <div id="menuContextLabel" class="menu-title">Workouts</div>
+      </div>
+      <button
+        id="themeSwitch"
+        class="theme-switch"
+        data-action="toggle-theme"
+        aria-label="Toggle color theme"
+        aria-pressed="false"
+      >
+        <span class="theme-switch-dot" aria-hidden="true"></span>
+        <span id="themeSwitchLabel">Light</span>
+      </button>
+    </header>
 
     <main id="viewContainer">
       <section id="view-workouts" class="view active">
@@ -540,6 +556,7 @@
   <div id="toast" class="toast"></div>
 
   <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+  <script src="data/config/colors.js"></script>
   <script src="app.js"></script>
 </body>
 </html>
