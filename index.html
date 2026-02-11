@@ -12,27 +12,10 @@
   <link rel="icon" href="icon.svg" type="image/svg+xml">
   <link rel="apple-touch-icon" href="icon.svg">
   <meta name="apple-mobile-web-app-capable" content="yes">
-  <meta name="theme-color" content="#F6F8FC">
+  <meta name="theme-color" content="#0B1024">
 </head>
-<body>
+<body data-theme="dark">
   <div class="app">
-    <header class="menu-bar">
-      <div class="menu-copy">
-        <div class="menu-eyebrow">Forge</div>
-        <div id="menuContextLabel" class="menu-title">Workouts</div>
-      </div>
-      <button
-        id="themeSwitch"
-        class="theme-switch"
-        data-action="toggle-theme"
-        aria-label="Toggle color theme"
-        aria-pressed="false"
-      >
-        <span class="theme-switch-dot" aria-hidden="true"></span>
-        <span id="themeSwitchLabel">Light</span>
-      </button>
-    </header>
-
     <main id="viewContainer">
       <section id="view-workouts" class="view active">
         <div id="noWorkout" class="landing">
@@ -66,10 +49,6 @@
                   Workout Name
                   <input type="text" data-field="workout-name" placeholder="Workout">
                 </label>
-              <label>
-                Bodyweight (kg)
-                <input type="number" step="0.1" data-field="workout-bodyweight" placeholder="Optional">
-              </label>
             </div>
 
             <label>
@@ -143,29 +122,15 @@
               Name
               <input type="text" id="exerciseName" placeholder="e.g., Incline Press">
             </label>
-            <label>
-              Category
-              <input type="text" id="exerciseCategory" placeholder="Chest, Back, Cardio">
-            </label>
           </div>
           <div class="grid-2">
             <label>
               Primary Muscle Groups
-              <input type="text" id="exercisePrimaryMuscles" placeholder="e.g., Chest, Triceps">
+              <div id="exercisePrimaryMusclesSelect"></div>
             </label>
             <label>
               Detailed Muscle Groups
-              <input type="text" id="exerciseDetailedMuscles" placeholder="e.g., Upper Chest, Lateral Delts">
-            </label>
-          </div>
-          <div class="grid-2">
-            <label>
-              Type
-              <select id="exerciseType">
-                <option value="weight">Weight</option>
-                <option value="assisted">Assisted Bodyweight</option>
-                <option value="duration">Duration</option>
-              </select>
+              <div id="exerciseDetailedMusclesSelect"></div>
             </label>
           </div>
           <button class="primary" data-action="create-exercise">Add Exercise</button>
@@ -239,8 +204,8 @@
             </div>
           </div>
           <label>
-            Muscles to Track (multi-select)
-            <select id="muscleFilterSelect" multiple size="6"></select>
+            Muscles to Track
+            <div id="muscleFilterSelect"></div>
           </label>
           <div class="muted small">Select one or more muscles to compare sets over time.</div>
           <div class="chart-card">
@@ -321,12 +286,6 @@
               Rest Timer - Work Set (sec)
               <input type="number" step="5" data-setting="restSecondsWork" id="restSecondsWork">
             </label>
-            <label>
-              Rest Timer - Warm Up (sec)
-              <input type="number" step="5" data-setting="restSecondsWarmup" id="restSecondsWarmup">
-            </label>
-          </div>
-          <div class="grid-2">
             <label>
               Rest Timer - Drop Set (sec)
               <input type="number" step="5" data-setting="restSecondsDrop" id="restSecondsDrop">

@@ -3,8 +3,8 @@
   "short_name": "Forge",
   "start_url": ".",
   "display": "standalone",
-  "background_color": "#F6F8FC",
-  "theme_color": "#2D3B8D",
+  "background_color": "#0B1024",
+  "theme_color": "#0B1024",
   "icons": [
     {
       "src": "icon.svg",

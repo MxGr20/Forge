@@ -64,7 +64,6 @@ const DEFAULT_STATE = {
   settings: {
     units: "kg",
     restSecondsWork: 90,
-    restSecondsWarmup: 60,
     restSecondsDrop: 45,
     autoRest: true,
     barWeight: 20,
@@ -79,17 +78,50 @@ const DEFAULT_STATE = {
   activeWorkoutId: null
 };
 
-const THEME_STORAGE_KEY = "forge_theme_mode";
-const THEME_OPTIONS = new Set(["light", "dark"]);
-const VIEW_TITLES = {
-  workouts: "Workouts",
-  session: "Workout",
-  routines: "Templates",
-  exercises: "Exercises",
-  stats: "Statistics",
-  history: "History",
-  tools: "Tools"
-};
+const PRIMARY_MUSCLE_OPTIONS = [
+  "Chest",
+  "Back",
+  "Shoulders",
+  "Biceps",
+  "Triceps",
+  "Forearms",
+  "Quads",
+  "Hamstrings",
+  "Glutes",
+  "Calves",
+  "Core",
+  "Lower Back",
+  "Traps",
+  "Neck",
+  "Full Body"
+];
+
+const DETAILED_MUSCLE_OPTIONS = [
+  "Upper Chest",
+  "Mid Chest",
+  "Lower Chest",
+  "Lats",
+  "Upper Back",
+  "Mid Back",
+  "Rear Delts",
+  "Lateral Delts",
+  "Front Delts",
+  "Long Head Triceps",
+  "Lateral Head Triceps",
+  "Brachialis",
+  "Brachioradialis",
+  "Abs",
+  "Obliques",
+  "Spinal Erectors",
+  "Hip Flexors",
+  "Adductors",
+  "Abductors",
+  "Glute Max",
+  "Glute Med",
+  "Quads",
+  "Hamstrings",
+  "Calves"
+];
 
 const ui = {
   view: "workouts",
@@ -109,7 +141,14 @@ const ui = {
   historyActionTarget: null,
   historyEditTarget: null,
   historyFilter: "all",
-  measurementMetric: "bodyWeight"
+  measurementMetric: "bodyWeight",
+  exercisePrimarySelection: [],
+  exerciseDetailedSelection: [],
+  muscleSearchQuery: "",
+  exercisePrimaryQuery: "",
+  exerciseDetailedQuery: "",
+  activeMultiSelect: null,
+  muscleSelectionInitialized: false
 };
 
 const BODY_MEASUREMENT_FIELDS = [
@@ -258,7 +297,6 @@ function mergeSettings(saved = {}) {
   const legacyRest = saved.restSeconds;
   if (Number.isFinite(legacyRest)) {
     if (!Number.isFinite(saved.restSecondsWork)) merged.restSecondsWork = legacyRest;
-    if (!Number.isFinite(saved.restSecondsWarmup)) merged.restSecondsWarmup = Math.max(10, Math.round(legacyRest * 0.7));
     if (!Number.isFinite(saved.restSecondsDrop)) merged.restSecondsDrop = Math.max(10, Math.round(legacyRest * 0.5));
   }
   merged.includeBarWeightInCalc = saved.includeBarWeightInCalc !== false;
@@ -499,11 +537,9 @@ const restTimer = {
 
 function getRestSeconds(tag = "work") {
   const normalizedTag = String(tag || "work").toLowerCase();
-  const key = normalizedTag === "warmup" || normalizedTag === "warm-up"
-    ? "restSecondsWarmup"
-    : normalizedTag === "drop" || normalizedTag === "dropset" || normalizedTag === "drop-set"
-      ? "restSecondsDrop"
-      : "restSecondsWork";
+  const key = normalizedTag === "drop" || normalizedTag === "dropset" || normalizedTag === "drop-set"
+    ? "restSecondsDrop"
+    : "restSecondsWork";
   const value = state.settings[key];
   return Math.max(10, Number.isFinite(value) ? value : 0);
 }
@@ -546,13 +582,6 @@ function stopTimer(clear = true) {
   updateTimerUI();
 }
 
-function getPreferredTheme() {
-  const saved = localStorage.getItem(THEME_STORAGE_KEY);
-  if (THEME_OPTIONS.has(saved)) return saved;
-  if (typeof window.matchMedia !== "function") return "light";
-  return window.matchMedia("(prefers-color-scheme: dark)").matches ? "dark" : "light";
-}
-
 function updateThemeMetaColor(theme) {
   const meta = document.querySelector("meta[name='theme-color']");
   if (!meta) return;
@@ -562,13 +591,6 @@ function updateThemeMetaColor(theme) {
   meta.setAttribute("content", color);
 }
 
-function updateThemeSwitchLabel(theme) {
-  const label = $("#themeSwitchLabel");
-  if (label) label.textContent = theme === "dark" ? "Dark" : "Light";
-  const toggle = $("#themeSwitch");
-  if (toggle) toggle.setAttribute("aria-pressed", theme === "dark" ? "true" : "false");
-}
-
 function applyTheme(theme, options = {}) {
   const mode = theme === "dark" ? "dark" : "light";
   document.body.dataset.theme = mode;
@@ -576,28 +598,8 @@ function applyTheme(theme, options = {}) {
   if (window.FORGE_COLORS?.applyTheme) {
     window.FORGE_COLORS.applyTheme(mode);
   }
-  if (options.persist !== false) {
-    localStorage.setItem(THEME_STORAGE_KEY, mode);
-  }
-  updateThemeSwitchLabel(mode);
+  void options;
   updateThemeMetaColor(mode);
-}
-
-function toggleTheme() {
-  const current = document.body.dataset.theme === "dark" ? "dark" : "light";
-  const next = current === "dark" ? "light" : "dark";
-  applyTheme(next);
-  renderStats();
-  renderLog();
-  renderHistory();
-  renderExercises();
-  renderTools();
-}
-
-function updateMenuContextLabel(view) {
-  const label = $("#menuContextLabel");
-  if (!label) return;
-  label.textContent = VIEW_TITLES[view] || "Workouts";
 }
 
   function setView(view) {
@@ -610,7 +612,6 @@ function updateMenuContextLabel(view) {
     $$(".nav-btn").forEach((btn) => {
       btn.classList.toggle("active", btn.dataset.view === navView);
     });
-    updateMenuContextLabel(resolvedView);
   }
 
 function startWorkout(routineId = null) {
@@ -872,17 +873,15 @@ function saveExerciseEdit() {
 
 function normalizeSetTag(tag) {
   const normalized = String(tag || "work").toLowerCase();
-  if (normalized === "warm-up") return "warmup";
   if (normalized === "drop-set") return "drop";
   if (normalized === "dropset") return "drop";
   if (normalized === "failure") return "failure";
-  if (normalized === "warmup") return "warmup";
   if (normalized === "drop") return "drop";
   return "work";
 }
 
 function nextSetTag(tag) {
-  const order = ["work", "warmup", "failure", "drop"];
+  const order = ["work", "failure", "drop"];
   const current = normalizeSetTag(tag);
   const idx = order.indexOf(current);
   return order[(idx + 1) % order.length];
@@ -890,7 +889,6 @@ function nextSetTag(tag) {
 
 function setTagShort(tag) {
   const current = normalizeSetTag(tag);
-  if (current === "warmup") return "WU";
   if (current === "failure") return "F";
   if (current === "drop") return "D";
   return "W";
@@ -898,7 +896,6 @@ function setTagShort(tag) {
 
 function setTagLabel(tag) {
   const current = normalizeSetTag(tag);
-  if (current === "warmup") return "Warm-up";
   if (current === "failure") return "Failure";
   if (current === "drop") return "Drop";
   return "Work";
@@ -1034,10 +1031,10 @@ function getEditRoutine() {
 
 function createExercise() {
   const name = $("#exerciseName")?.value.trim();
-  const category = $("#exerciseCategory")?.value.trim();
-  const primaryMuscleGroups = $("#exercisePrimaryMuscles")?.value.trim() || "";
-  const detailedMuscleGroups = $("#exerciseDetailedMuscles")?.value.trim() || "";
-  const type = $("#exerciseType")?.value || "weight";
+  const category = "";
+  const type = "weight";
+  const primaryMuscleGroups = ui.exercisePrimarySelection.join(", ");
+  const detailedMuscleGroups = ui.exerciseDetailedSelection.join(", ");
   if (!name) {
     toast("Exercise needs a name");
     return;
@@ -1052,11 +1049,13 @@ function createExercise() {
   };
   state.exercises.push(exercise);
   $("#exerciseName").value = "";
-  $("#exerciseCategory").value = "";
-  const primaryInput = $("#exercisePrimaryMuscles");
-  const detailedInput = $("#exerciseDetailedMuscles");
-  if (primaryInput) primaryInput.value = "";
-  if (detailedInput) detailedInput.value = "";
+  ui.exercisePrimarySelection = [];
+  ui.exerciseDetailedSelection = [];
+  ui.exercisePrimaryQuery = "";
+  ui.exerciseDetailedQuery = "";
+  if (ui.activeMultiSelect === "exercise-primary" || ui.activeMultiSelect === "exercise-detailed") {
+    ui.activeMultiSelect = null;
+  }
   saveState();
   renderExercises();
   renderRoutines();
@@ -1100,10 +1099,8 @@ function renderSession() {
   activePanel.classList.remove("hidden");
 
     const nameInput = $("[data-field='workout-name']");
-    const bwInput = $("[data-field='workout-bodyweight']");
     const notesInput = $("[data-field='workout-notes']");
     if (nameInput) nameInput.value = active.name || "";
-    if (bwInput) bwInput.value = Number.isFinite(active.bodyweight) ? active.bodyweight : "";
     if (notesInput) notesInput.value = active.notes || "";
 
   const addSelect = $("#addExerciseSelect");
@@ -1193,7 +1190,7 @@ function renderExerciseCard(item, options) {
   const setsRows = item.sets.map((set, index) => renderSetRow(set, index, item.id, owner)).join("");
   const setsHtml = item.sets.length ? setsHeader + setsRows : `${setsHeader}<div class="muted small">No sets yet.</div>`;
   const tagHelp = item.sets.length
-    ? "<div class=\"muted small set-tag-help\">Tap set number to cycle tag (W, WU, F, D).</div>"
+    ? "<div class=\"muted small set-tag-help\">Tap set number to cycle tag (W, F, D).</div>"
     : "";
     const actions = owner === "routine"
       ? `
@@ -1677,6 +1674,7 @@ function renderRoutines() {
 }
 
 function renderExercises() {
+  renderExerciseMuscleSelectors();
   const list = $("#exerciseList");
   if (!list) return;
   const term = ui.exerciseSearch.toLowerCase();
@@ -1994,6 +1992,125 @@ function parseMuscleGroups(value) {
     .filter(Boolean);
 }
 
+function uniqueSorted(values) {
+  return Array.from(new Set(values.filter(Boolean)))
+    .sort((a, b) => a.localeCompare(b));
+}
+
+function collectExerciseMuscleOptions(kind) {
+  const seed = kind === "detailed" ? DETAILED_MUSCLE_OPTIONS : PRIMARY_MUSCLE_OPTIONS;
+  const existing = state.exercises.flatMap((exercise) => {
+    const raw = kind === "detailed" ? exercise.detailedMuscleGroups : exercise.primaryMuscleGroups;
+    return parseMuscleGroups(raw);
+  });
+  return uniqueSorted([...seed, ...existing]);
+}
+
+function getMultiSelectState(multiId) {
+  if (multiId === "exercise-primary") {
+    return { selected: ui.exercisePrimarySelection, query: ui.exercisePrimaryQuery };
+  }
+  if (multiId === "exercise-detailed") {
+    return { selected: ui.exerciseDetailedSelection, query: ui.exerciseDetailedQuery };
+  }
+  return { selected: ui.selectedMuscles, query: ui.muscleSearchQuery };
+}
+
+function setMultiSelectQuery(multiId, value) {
+  const query = String(value || "");
+  if (multiId === "exercise-primary") {
+    ui.exercisePrimaryQuery = query;
+    return;
+  }
+  if (multiId === "exercise-detailed") {
+    ui.exerciseDetailedQuery = query;
+    return;
+  }
+  ui.muscleSearchQuery = query;
+}
+
+function setMultiSelectSelection(multiId, values) {
+  const normalized = uniqueSorted(values.map((entry) => String(entry || "").trim()));
+  if (multiId === "exercise-primary") {
+    ui.exercisePrimarySelection = normalized;
+    return;
+  }
+  if (multiId === "exercise-detailed") {
+    ui.exerciseDetailedSelection = normalized;
+    return;
+  }
+  ui.selectedMuscles = normalized;
+}
+
+function focusMultiInput(multiId) {
+  const input = $(`[data-multi-input="${multiId}"]`);
+  if (!input) return;
+  input.focus();
+  const end = input.value.length;
+  input.setSelectionRange(end, end);
+}
+
+function renderMultiSelectControl({ rootId, multiId, selected, query, options, placeholder }) {
+  const root = $(`#${rootId}`);
+  if (!root) return;
+  const safeQuery = String(query || "");
+  const filteredOptions = options.filter((option) => option.toLowerCase().includes(safeQuery.toLowerCase()));
+  const dropdownOpen = ui.activeMultiSelect === multiId;
+  const chips = selected.map((value) => `
+    <span class="multi-chip">
+      <span>${esc(value)}</span>
+      <button type="button" class="multi-chip-remove" data-action="multi-remove" data-multi-id="${multiId}" data-value="${esc(value)}" aria-label="Remove ${esc(value)}">×</button>
+    </span>
+  `).join("");
+  const optionsHtml = filteredOptions.length
+    ? filteredOptions.map((option) => {
+      const selectedClass = selected.includes(option) ? " selected" : "";
+      return `<button type="button" class="multi-option${selectedClass}" data-action="multi-toggle" data-multi-id="${multiId}" data-value="${esc(option)}">${esc(option)}</button>`;
+    }).join("")
+    : "<div class=\"multi-empty\">No matches</div>";
+
+  root.innerHTML = `
+    <div class="multi-select${dropdownOpen ? " open" : ""}" data-multi-id="${multiId}">
+      <div class="multi-control" data-action="multi-open" data-multi-id="${multiId}">
+        ${chips}
+        <input
+          type="text"
+          class="multi-input"
+          data-multi-input="${multiId}"
+          value="${esc(safeQuery)}"
+          placeholder="${esc(placeholder)}"
+          autocomplete="off"
+        >
+        <button type="button" class="multi-caret-btn" data-action="multi-open" data-multi-id="${multiId}" aria-label="Toggle options">
+          <span class="multi-caret">▾</span>
+        </button>
+      </div>
+      <div class="multi-dropdown${dropdownOpen ? "" : " hidden"}">
+        ${optionsHtml}
+      </div>
+    </div>
+  `;
+}
+
+function renderExerciseMuscleSelectors() {
+  renderMultiSelectControl({
+    rootId: "exercisePrimaryMusclesSelect",
+    multiId: "exercise-primary",
+    selected: ui.exercisePrimarySelection,
+    query: ui.exercisePrimaryQuery,
+    options: collectExerciseMuscleOptions("primary"),
+    placeholder: "Search primary muscles"
+  });
+  renderMultiSelectControl({
+    rootId: "exerciseDetailedMusclesSelect",
+    multiId: "exercise-detailed",
+    selected: ui.exerciseDetailedSelection,
+    query: ui.exerciseDetailedQuery,
+    options: collectExerciseMuscleOptions("detailed"),
+    placeholder: "Search detailed muscles"
+  });
+}
+
 function getExerciseMuscleGroups(exercise, dimension) {
   const source = dimension === "detailed" ? exercise?.detailedMuscleGroups : exercise?.primaryMuscleGroups;
   const groups = parseMuscleGroups(source);
@@ -2105,18 +2222,23 @@ function renderMuscleGroupSection() {
 
   const availableMuscles = collectAvailableMuscles(ui.muscleDimension);
   const validSelection = ui.selectedMuscles.filter((muscle) => availableMuscles.includes(muscle));
-  if (!validSelection.length) {
-    ui.selectedMuscles = availableMuscles.slice(0, Math.min(4, availableMuscles.length));
+  if (!ui.muscleSelectionInitialized) {
+    ui.selectedMuscles = validSelection.length
+      ? validSelection
+      : availableMuscles.slice(0, Math.min(4, availableMuscles.length));
+    ui.muscleSelectionInitialized = true;
   } else {
     ui.selectedMuscles = validSelection;
   }
 
-  const filterSelect = $("#muscleFilterSelect");
-  if (filterSelect) {
-    filterSelect.innerHTML = availableMuscles
-      .map((muscle) => `<option value="${esc(muscle)}" ${ui.selectedMuscles.includes(muscle) ? "selected" : ""}>${esc(muscle)}</option>`)
-      .join("");
-  }
+  renderMultiSelectControl({
+    rootId: "muscleFilterSelect",
+    multiId: "stats-muscles",
+    selected: ui.selectedMuscles,
+    query: ui.muscleSearchQuery,
+    options: availableMuscles,
+    placeholder: "Search muscles to track"
+  });
 
   const data = computeMuscleVolumeSeries(
     ui.muscleGrouping,
@@ -2317,7 +2439,6 @@ function saveBodyMeasurement() {
 
 function renderTools() {
   if ($("#restSecondsWork")) $("#restSecondsWork").value = state.settings.restSecondsWork;
-  if ($("#restSecondsWarmup")) $("#restSecondsWarmup").value = state.settings.restSecondsWarmup;
   if ($("#restSecondsDrop")) $("#restSecondsDrop").value = state.settings.restSecondsDrop;
   const autoRest = $("#autoRest");
   if (autoRest) autoRest.checked = !!state.settings.autoRest;
@@ -2535,9 +2656,6 @@ function updateSetting(key, value, element) {
   } else if (key === "restSecondsWork") {
     state.settings.restSecondsWork = Math.max(10, parseInt(value, 10) || 90);
     updateTimerUI();
-  } else if (key === "restSecondsWarmup") {
-    state.settings.restSecondsWarmup = Math.max(10, parseInt(value, 10) || 60);
-    updateTimerUI();
   } else if (key === "restSecondsDrop") {
     state.settings.restSecondsDrop = Math.max(10, parseInt(value, 10) || 45);
     updateTimerUI();
@@ -2661,16 +2779,22 @@ function handleInputEvents() {
         renderReplaceSheet();
         return;
       }
+    if (target.dataset.multiInput) {
+      const multiId = target.dataset.multiInput;
+      ui.activeMultiSelect = multiId;
+      setMultiSelectQuery(multiId, target.value);
+      if (multiId === "stats-muscles") {
+        renderMuscleGroupSection();
+      } else {
+        renderExerciseMuscleSelectors();
+      }
+      focusMultiInput(multiId);
+      return;
+    }
       if (target.dataset.field === "workout-name") {
         const workout = getActiveWorkout();
         if (workout) workout.name = target.value;
         saveState();
-      return;
-    }
-    if (target.dataset.field === "workout-bodyweight") {
-      const workout = getActiveWorkout();
-      if (workout) workout.bodyweight = parseFloat(target.value);
-      saveState();
       return;
     }
     if (target.dataset.field === "workout-notes") {
@@ -2715,11 +2839,6 @@ function handleInputEvents() {
       renderStats();
       return;
     }
-    if (target.id === "muscleFilterSelect") {
-      ui.selectedMuscles = Array.from(target.selectedOptions).map((option) => option.value);
-      renderStats();
-      return;
-    }
     if (target.id === "measurementMetricSelect") {
       ui.measurementMetric = target.value;
       renderBodyMeasurementSection();
@@ -2742,6 +2861,12 @@ function handleInputEvents() {
   });
 
     document.addEventListener("click", (event) => {
+      const insideMulti = event.target.closest(".multi-select");
+      if (!insideMulti && ui.activeMultiSelect) {
+        ui.activeMultiSelect = null;
+        if (ui.view === "stats") renderMuscleGroupSection();
+        if (ui.view === "exercises") renderExerciseMuscleSelectors();
+      }
       if (event.target.id === "workoutSheet") {
         closeWorkoutSheet();
         return;
@@ -2773,8 +2898,51 @@ function handleInputEvents() {
       const button = event.target.closest("[data-action]");
       if (!button) return;
       const action = button.dataset.action;
-      if (action === "toggle-theme") {
-        toggleTheme();
+      if (action === "multi-open") {
+        const multiId = button.dataset.multiId || null;
+        ui.activeMultiSelect = ui.activeMultiSelect === multiId ? null : multiId;
+        if (multiId === "stats-muscles") {
+          renderMuscleGroupSection();
+        } else {
+          renderExerciseMuscleSelectors();
+        }
+        if (ui.activeMultiSelect) focusMultiInput(multiId);
+        return;
+      }
+      if (action === "multi-toggle") {
+        const multiId = button.dataset.multiId || "";
+        const value = String(button.dataset.value || "").trim();
+        if (!multiId || !value) return;
+        const current = getMultiSelectState(multiId).selected;
+        const next = current.includes(value)
+          ? current.filter((entry) => entry !== value)
+          : [...current, value];
+        setMultiSelectSelection(multiId, next);
+        ui.activeMultiSelect = multiId;
+        if (multiId === "stats-muscles") {
+          ui.muscleSelectionInitialized = true;
+          renderStats();
+        } else {
+          renderExerciseMuscleSelectors();
+        }
+        focusMultiInput(multiId);
+        return;
+      }
+      if (action === "multi-remove") {
+        const multiId = button.dataset.multiId || "";
+        const value = String(button.dataset.value || "").trim();
+        if (!multiId || !value) return;
+        const current = getMultiSelectState(multiId).selected;
+        const next = current.filter((entry) => entry !== value);
+        setMultiSelectSelection(multiId, next);
+        ui.activeMultiSelect = multiId;
+        if (multiId === "stats-muscles") {
+          ui.muscleSelectionInitialized = true;
+          renderStats();
+        } else {
+          renderExerciseMuscleSelectors();
+        }
+        focusMultiInput(multiId);
         return;
       }
       if (action === "nav") {
@@ -2943,6 +3111,8 @@ function handleInputEvents() {
         if (ui.muscleDimension !== next) {
           ui.muscleDimension = next;
           ui.selectedMuscles = [];
+          ui.muscleSearchQuery = "";
+          ui.muscleSelectionInitialized = false;
         }
         renderStats();
         return;
@@ -3325,7 +3495,7 @@ function scheduleCloudSync() {
 
   function init() {
     handleInputEvents();
-    applyTheme(getPreferredTheme(), { persist: false });
+    applyTheme("dark", { persist: false });
     setView(ui.view);
     renderAll();
     renderTools();
