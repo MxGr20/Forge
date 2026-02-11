@@ -210,7 +210,7 @@
           </label>
           <div class="muted small">Select one or more muscles to compare sets over time.</div>
           <div class="chart-card">
-            <div class="chart-title">Sets by Muscle Group</div>
+            <div id="muscleChartTitle" class="chart-title">Sets by Muscle Group</div>
             <div id="muscleVolumeChart" class="chart"></div>
             <div id="muscleChartSummary" class="chart-summary muted small" role="status" aria-live="polite"></div>
             <div id="muscleChartRange" class="muted small chart-range"></div>
@@ -255,11 +255,14 @@
           </div>
           <div id="bodyMeasurementMeta" class="muted small"></div>
           <div class="chart-card">
-            <div class="row space">
-              <div class="chart-title">Body Measurement Trend</div>
+            <div class="row wrap stats-controls">
+              <div id="measurementMetricTitle" class="chart-title">Body Measurement Trend</div>
               <select id="measurementMetricSelect"></select>
+              <select id="measurementMonthsSelect"></select>
             </div>
-            <div id="measurementChart" class="chart"></div>
+            <div id="measurementMetricChart" class="chart adaptive-performance-chart"></div>
+            <div id="measurementMetricSummary" class="chart-summary muted small" role="status" aria-live="polite"></div>
+            <div id="measurementMetricRange" class="muted small chart-range"></div>
           </div>
         </div>
       </section>

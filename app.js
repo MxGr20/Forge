@@ -146,6 +146,7 @@ const ui = {
   historyEditTarget: null,
   historyFilter: "all",
   measurementMetric: "bodyWeight",
+  measurementMonthsBack: 6,
   exercisePrimarySelection: [],
   exerciseDetailedSelection: [],
   editExercisePrimarySelection: [],
@@ -285,17 +286,30 @@ function normalizeMuscleTagValue(value) {
 
 function normalizeMuscleTagLibrary(library) {
   const safe = library && typeof library === "object" ? library : {};
-  const normalizeList = (list) => uniqueSorted((Array.isArray(list) ? list : []).map(normalizeMuscleTagValue));
+  const normalizeList = (kind, list) => {
+    const seed = kind === "detailed" ? DETAILED_MUSCLE_OPTIONS : PRIMARY_MUSCLE_OPTIONS;
+    const seedSet = new Set(seed.map((entry) => entry.toLowerCase()));
+    return uniqueSorted((Array.isArray(list) ? list : [])
+      .map(normalizeMuscleTagValue)
+      .filter((entry) => entry && !seedSet.has(entry.toLowerCase())));
+  };
   return {
-    primary: normalizeList(safe.primary),
-    detailed: normalizeList(safe.detailed)
+    primary: normalizeList("primary", safe.primary),
+    detailed: normalizeList("detailed", safe.detailed)
   };
 }
 
 function rememberMuscleTags(kind, tags) {
   if (kind !== "primary" && kind !== "detailed") return;
+  const seed = kind === "detailed" ? DETAILED_MUSCLE_OPTIONS : PRIMARY_MUSCLE_OPTIONS;
+  const seedSet = new Set(seed.map((entry) => entry.toLowerCase()));
   const current = state.muscleTagLibrary?.[kind] || [];
-  const merged = uniqueSorted([...current, ...tags.map(normalizeMuscleTagValue)]);
+  const merged = uniqueSorted([
+    ...current,
+    ...tags
+      .map(normalizeMuscleTagValue)
+      .filter((entry) => entry && !seedSet.has(entry.toLowerCase()))
+  ]);
   if (!state.muscleTagLibrary) {
     state.muscleTagLibrary = { primary: [], detailed: [] };
   }
@@ -1843,7 +1857,11 @@ function getExercisePerformanceData(exerciseId) {
 function formatExerciseMetricValue(metric, value, options = {}) {
   if (!Number.isFinite(value)) return "-";
   const integerOnly = metric.key === "mostReps";
-  const decimals = integerOnly ? 0 : (Math.abs(value) >= 100 ? 0 : 1);
+  const decimals = integerOnly
+    ? 0
+    : Number.isFinite(metric.decimals)
+      ? metric.decimals
+      : (Math.abs(value) >= 100 ? 0 : 1);
   const numeric = value.toFixed(decimals).replace(/\.0$/, "");
   if (options.withUnit === false) return numeric;
   if (metric.unit === "reps") return `${numeric} reps`;
@@ -1895,7 +1913,10 @@ function computeTrendLine(values) {
   return { slope, intercept };
 }
 
-function computeExercisePerformanceSnapshot(chartData, metric) {
+function computeExercisePerformanceSnapshot(chartData, metric, options = {}) {
+  const nounSingular = options.nounSingular || "session";
+  const nounPlural = options.nounPlural || "sessions";
+  const context = options.context || "this range";
   const count = chartData.length;
   const values = chartData.map((entry) => Number.isFinite(entry.value) ? entry.value : 0);
   const firstValue = count ? values[0] : null;
@@ -1950,12 +1971,12 @@ function computeExercisePerformanceSnapshot(chartData, metric) {
   const nextGoal = computeNextGoal(metric, bestValue);
   const latestIsPr = count ? Math.abs(latestValue - bestValue) < 1e-9 : false;
 
-  let screenReaderSummary = "No workout sessions found for this exercise and range.";
+  let screenReaderSummary = `No ${nounPlural} found for ${context}.`;
   if (count === 1) {
-    screenReaderSummary = `One session recorded. Latest ${metric.label.toLowerCase()} is ${formatExerciseMetricValue(metric, latestValue)}.`;
+    screenReaderSummary = `One ${nounSingular} recorded. Latest ${metric.label.toLowerCase()} is ${formatExerciseMetricValue(metric, latestValue)}.`;
   } else if (count > 1) {
     const movement = direction === "up" ? "increased" : direction === "down" ? "decreased" : "stayed the same";
-    screenReaderSummary = `${metric.label} ${movement} from ${formatExerciseMetricValue(metric, firstValue)} to ${formatExerciseMetricValue(metric, latestValue)} across ${count} sessions. Best is ${formatExerciseMetricValue(metric, bestValue)}.`;
+    screenReaderSummary = `${metric.label} ${movement} from ${formatExerciseMetricValue(metric, firstValue)} to ${formatExerciseMetricValue(metric, latestValue)} across ${count} ${nounPlural}. Best is ${formatExerciseMetricValue(metric, bestValue)}.`;
   }
 
   return {
@@ -2205,7 +2226,11 @@ function renderAdaptiveExercisePerformance(metric, chartData, cutoffDate, fallba
   const summaryEl = $("#exerciseMetricSummary");
   if (!chartEl || !rangeEl || !summaryEl) return;
 
-  const snapshot = computeExercisePerformanceSnapshot(chartData, metric);
+  const snapshot = computeExercisePerformanceSnapshot(chartData, metric, {
+    nounSingular: "session",
+    nounPlural: "sessions",
+    context: "this exercise and range"
+  });
   const stage = snapshot.count <= 1 ? "a" : snapshot.count < 5 ? "b" : "c";
   const color = resolveMetricColor(metric.metricColorKey || metric.key);
   const fallbackLatestSession = fallbackSessions.length
@@ -2228,6 +2253,76 @@ function renderAdaptiveExercisePerformance(metric, chartData, cutoffDate, fallba
 
   if (stage === "a") {
     renderExercisePerformanceStageA(chartEl, metric, latestEntry, snapshot);
+  } else if (stage === "b") {
+    renderExercisePerformanceStageB(chartEl, metric, chartData, color, snapshot);
+  } else {
+    renderExercisePerformanceStageC(chartEl, metric, chartData, color, snapshot);
+  }
+
+  const interpretation = snapshot.count > 1
+    ? `${performanceDirectionLabel(snapshot.direction)} by ${formatSignedDelta(metric, snapshot.delta)}.`
+    : "No trend yet.";
+  const prCopy = snapshot.latestIsPr && snapshot.count > 1 ? "New personal best." : "";
+  const sessionsLabel = `${snapshot.count} session${snapshot.count === 1 ? "" : "s"}`;
+  const rangeParts = [
+    `Visualized range: ${formatDateRange(startDate, endDate)}`,
+    sessionsLabel,
+    stageHint,
+    interpretation,
+    prCopy
+  ].filter(Boolean);
+  rangeEl.textContent = rangeParts.join(" · ");
+  summaryEl.textContent = snapshot.screenReaderSummary;
+}
+
+function renderMeasurementPerformanceStageA(container, metric, latestEntry, snapshot) {
+  if (!container) return;
+  const latestValueLabel = latestEntry
+    ? formatExerciseMetricValue(metric, latestEntry.value)
+    : "—";
+  const countLabel = snapshot.count === 0
+    ? "No measurements in this range yet."
+    : "Only 1 measurement recorded in this range.";
+
+  container.classList.add("performance-stage-a");
+  container.classList.remove("performance-stage-b", "performance-stage-c");
+  container.innerHTML = `
+    <div class="performance-empty">
+      <div class="performance-empty-kicker">Latest ${esc(metric.label)}</div>
+      <div class="performance-empty-value">${esc(latestValueLabel)}</div>
+      <div class="muted small">${esc(countLabel)}</div>
+      <div class="muted small">Log more measurements to see trends.</div>
+    </div>
+  `;
+}
+
+function renderAdaptiveMeasurementPerformance(metric, chartData, cutoffDate, fallbackEntries = []) {
+  const chartEl = $("#measurementMetricChart");
+  const rangeEl = $("#measurementMetricRange");
+  const summaryEl = $("#measurementMetricSummary");
+  if (!chartEl || !rangeEl || !summaryEl) return;
+
+  const snapshot = computeExercisePerformanceSnapshot(chartData, metric, {
+    nounSingular: "entry",
+    nounPlural: "entries",
+    context: "this body metric and range"
+  });
+  const stage = snapshot.count <= 1 ? "a" : snapshot.count < 5 ? "b" : "c";
+  const color = resolveMetricColor(metric.metricColorKey || metric.key);
+  const fallbackLatestEntry = fallbackEntries.length
+    ? fallbackEntries[fallbackEntries.length - 1]
+    : null;
+  const latestEntry = chartData[chartData.length - 1] || fallbackLatestEntry || null;
+  const startDate = chartData[0]?.date || cutoffDate;
+  const endDate = chartData[chartData.length - 1]?.date || latestEntry?.date || new Date();
+  const stageHint = stage === "a"
+    ? "Trend visible after 5 sessions."
+    : stage === "b"
+      ? `Early trend from ${snapshot.count} sessions. Trend visible after 5 sessions.`
+      : "Mature trend view with average line, PR, and tooltips.";
+
+  if (stage === "a") {
+    renderMeasurementPerformanceStageA(chartEl, metric, latestEntry, snapshot);
   } else if (stage === "b") {
     renderExercisePerformanceStageB(chartEl, metric, chartData, color, snapshot);
   } else {
@@ -2528,12 +2623,42 @@ function canCreateMultiSelectOption(multiId) {
   return !!multiSelectMuscleKind(multiId);
 }
 
+function getMultiSelectOptions(multiId) {
+  if (multiId === "stats-muscles") {
+    return collectAvailableMuscles(ui.muscleDimension);
+  }
+  const kind = multiSelectMuscleKind(multiId);
+  if (kind) return collectExerciseMuscleOptions(kind);
+  return [];
+}
+
 function focusMultiInput(multiId) {
   const input = $(`[data-multi-input="${multiId}"]`);
   if (!input) return;
   input.focus();
   const end = input.value.length;
   input.setSelectionRange(end, end);
+}
+
+function isRemovableMuscleOption(kind, option) {
+  if (kind !== "primary" && kind !== "detailed") return false;
+  const normalized = normalizeMuscleTagValue(option).toLowerCase();
+  return (state.muscleTagLibrary?.[kind] || [])
+    .some((entry) => entry.toLowerCase() === normalized);
+}
+
+function removeMuscleOptionFromLibrary(kind, value) {
+  if (kind !== "primary" && kind !== "detailed") return false;
+  const normalized = normalizeMuscleTagValue(value).toLowerCase();
+  if (!normalized) return false;
+  const current = state.muscleTagLibrary?.[kind] || [];
+  const next = current.filter((entry) => entry.toLowerCase() !== normalized);
+  if (next.length === current.length) return false;
+  if (!state.muscleTagLibrary) {
+    state.muscleTagLibrary = { primary: [], detailed: [] };
+  }
+  state.muscleTagLibrary[kind] = next;
+  return true;
 }
 
 function renderMultiSelectControl({ rootId, multiId, selected, query, options, placeholder }) {
@@ -2554,7 +2679,17 @@ function renderMultiSelectControl({ rootId, multiId, selected, query, options, p
   const optionsHtml = filteredOptions.length
     ? filteredOptions.map((option) => {
       const selectedClass = selected.includes(option) ? " selected" : "";
-      return `<button type="button" class="multi-option${selectedClass}" data-action="multi-toggle" data-multi-id="${multiId}" data-value="${esc(option)}">${esc(option)}</button>`;
+      const kind = multiSelectMuscleKind(multiId);
+      const removable = isRemovableMuscleOption(kind, option);
+      const removeButton = removable
+        ? `<button type="button" class="multi-option-remove" data-action="multi-delete-option" data-multi-id="${multiId}" data-value="${esc(option)}" aria-label="Remove ${esc(option)} from options">×</button>`
+        : "";
+      return `
+        <div class="multi-option-row${selectedClass}">
+          <button type="button" class="multi-option${selectedClass}" data-action="multi-toggle" data-multi-id="${multiId}" data-value="${esc(option)}">${esc(option)}</button>
+          ${removeButton}
+        </div>
+      `;
     }).join("")
     : "<div class=\"multi-empty\">No matches</div>";
   const canCreate = allowCreate
@@ -2605,6 +2740,28 @@ function refreshMultiSelect(multiId) {
     renderStats();
   } else {
     renderExerciseMuscleSelectors();
+  }
+}
+
+function removeOptionFromSelections(kind, value) {
+  const normalized = normalizeMuscleTagValue(value).toLowerCase();
+  if (!normalized) return;
+  const removeFrom = (list) => list.filter((entry) => entry.toLowerCase() !== normalized);
+
+  if (kind === "primary") {
+    ui.exercisePrimarySelection = removeFrom(ui.exercisePrimarySelection);
+    ui.editExercisePrimarySelection = removeFrom(ui.editExercisePrimarySelection);
+    if (ui.muscleDimension === "primary") {
+      ui.selectedMuscles = removeFrom(ui.selectedMuscles);
+    }
+    return;
+  }
+  if (kind === "detailed") {
+    ui.exerciseDetailedSelection = removeFrom(ui.exerciseDetailedSelection);
+    ui.editExerciseDetailedSelection = removeFrom(ui.editExerciseDetailedSelection);
+    if (ui.muscleDimension === "detailed") {
+      ui.selectedMuscles = removeFrom(ui.selectedMuscles);
+    }
   }
 }
 
@@ -2680,21 +2837,19 @@ function toDateKey(date) {
   return `${year}-${month}-${day}`;
 }
 
-function collectAvailableMuscles(dimension) {
-  const seedOptions = dimension === "detailed" ? DETAILED_MUSCLE_OPTIONS : PRIMARY_MUSCLE_OPTIONS;
-  const remembered = state.muscleTagLibrary?.[dimension] || [];
+function collectExerciseLibraryMuscles(dimension) {
   const muscles = new Set();
-  [...seedOptions, ...remembered].forEach((group) => muscles.add(group));
   state.exercises.forEach((exercise) => {
-    getExerciseMuscleGroups(exercise, dimension).forEach((group) => muscles.add(group));
+    const source = dimension === "detailed" ? exercise?.detailedMuscleGroups : exercise?.primaryMuscleGroups;
+    parseMuscleGroups(source).forEach((group) => muscles.add(group));
   });
-  state.workouts.forEach((workout) => {
-    workout.items.forEach((item) => {
-      const exercise = getExercise(item.exerciseId);
-      getExerciseMuscleGroups(exercise, dimension).forEach((group) => muscles.add(group));
-    });
-  });
-  if (!muscles.size) muscles.add("Unassigned");
+  return Array.from(muscles).sort((a, b) => a.localeCompare(b));
+}
+
+function collectAvailableMuscles(dimension) {
+  const libraryTags = collectExerciseLibraryMuscles(dimension);
+  const muscles = new Set(libraryTags);
+  ui.selectedMuscles.forEach((group) => muscles.add(group));
   return Array.from(muscles).sort((a, b) => a.localeCompare(b));
 }
 
@@ -2778,6 +2933,9 @@ function renderAdaptiveMuscleVolumeChart(container, labels, series, options = {}
   const bestSets = totalsByPeriod.length ? Math.max(...totalsByPeriod) : 0;
   const bestIndex = totalsByPeriod.findIndex((value) => Math.abs(value - bestSets) < 1e-9);
   const bestLabel = bestIndex >= 0 ? labels[bestIndex] : "";
+  const firstSets = totalsByPeriod.length ? totalsByPeriod[0] : 0;
+  const delta = totalsByPeriod.length > 1 ? latestSets - firstSets : 0;
+  const direction = Math.abs(delta) < 1e-9 ? "flat" : delta > 0 ? "up" : "down";
   const stage = nonZeroCount <= 1 ? "a" : nonZeroCount < 5 ? "b" : "c";
 
   container.classList.add("adaptive-performance-chart");
@@ -2801,6 +2959,8 @@ function renderAdaptiveMuscleVolumeChart(container, labels, series, options = {}
       totalSets,
       latestSets,
       bestSets,
+      delta,
+      direction,
       bestLabel
     };
   }
@@ -2823,6 +2983,8 @@ function renderAdaptiveMuscleVolumeChart(container, labels, series, options = {}
       totalSets,
       latestSets,
       bestSets,
+      delta,
+      direction,
       bestLabel
     };
   }
@@ -2860,6 +3022,8 @@ function renderAdaptiveMuscleVolumeChart(container, labels, series, options = {}
     totalSets,
     latestSets,
     bestSets,
+    delta,
+    direction,
     bestLabel
   };
 }
@@ -2869,6 +3033,10 @@ function renderMuscleGroupSection() {
   if (groupingSelect) groupingSelect.value = ui.muscleGrouping;
   const monthsSelect = $("#muscleMonthsSelect");
   ui.muscleMonthsBack = populateMonthRangeSelect(monthsSelect, ui.muscleMonthsBack, 1);
+  const chartTitle = $("#muscleChartTitle");
+  if (chartTitle) {
+    chartTitle.textContent = `Sets by Muscle Group · Last ${ui.muscleMonthsBack} month${ui.muscleMonthsBack === 1 ? "" : "s"}`;
+  }
   const toggle = $("#muscleDimensionToggle");
   if (toggle) {
     $$("button[data-dimension]", toggle).forEach((button) => {
@@ -2877,11 +3045,12 @@ function renderMuscleGroupSection() {
   }
 
   const availableMuscles = collectAvailableMuscles(ui.muscleDimension);
+  const preferredMuscles = collectExerciseLibraryMuscles(ui.muscleDimension);
   const validSelection = ui.selectedMuscles.filter((muscle) => availableMuscles.includes(muscle));
   if (!ui.muscleSelectionInitialized) {
     ui.selectedMuscles = validSelection.length
       ? validSelection
-      : availableMuscles.slice();
+      : preferredMuscles.slice();
     ui.muscleSelectionInitialized = true;
   } else {
     ui.selectedMuscles = validSelection;
@@ -2925,17 +3094,20 @@ function renderMuscleGroupSection() {
   if (rangeEl) {
     const start = data.fromDate || data.cutoff;
     const end = data.toDate || new Date();
-    const sourceLabel = ui.muscleDimension === "detailed" ? "Detailed muscles" : "Primary muscles";
+    const sessionsLabel = `${chartSnapshot.nonZeroCount} session${chartSnapshot.nonZeroCount === 1 ? "" : "s"}`;
     const stageHint = chartSnapshot.status === "selection-required"
-      ? "Select muscles to track sets"
+      ? "Trend visible after 5 sessions."
       : chartSnapshot.status === "no-data"
-        ? "No logged muscle sets in this range"
+        ? "Trend visible after 5 sessions."
         : chartSnapshot.stage === "a"
-          ? "Trend visible after 5 logged periods"
+          ? "Trend visible after 5 sessions."
           : chartSnapshot.stage === "b"
-            ? `Early trend from ${chartSnapshot.nonZeroCount} periods`
+            ? `Early trend from ${chartSnapshot.nonZeroCount} sessions. Trend visible after 5 sessions.`
             : "Mature trend view";
-    rangeEl.textContent = `Visualized range: ${formatDateRange(start, end)} · ${sourceLabel} · ${stageHint}`;
+    const interpretation = chartSnapshot.nonZeroCount > 1
+      ? `${performanceDirectionLabel(chartSnapshot.direction)} by ${chartSnapshot.delta > 0 ? "+" : ""}${Math.round(chartSnapshot.delta)} sets.`
+      : "No trend yet.";
+    rangeEl.textContent = `Visualized range: ${formatDateRange(start, end)} · ${sessionsLabel} · ${stageHint} ${interpretation}`;
   }
 
   const legend = $("#muscleChartLegend");
@@ -3080,11 +3252,29 @@ function renderBodyMeasurementSection() {
     metricSelect.value = ui.measurementMetric;
   }
 
+  const monthsSelect = $("#measurementMonthsSelect");
+  ui.measurementMonthsBack = populateMonthRangeSelect(monthsSelect, ui.measurementMonthsBack, 6);
   const metric = findBodyMeasurementField(ui.measurementMetric);
-  const chartData = getSortedBodyMeasurements()
+  const titleEl = $("#measurementMetricTitle");
+  if (titleEl) {
+    titleEl.textContent = `${metric.label} · Last ${ui.measurementMonthsBack} month${ui.measurementMonthsBack === 1 ? "" : "s"}`;
+  }
+  const cutoff = getMonthsBackCutoff(ui.measurementMonthsBack);
+  const allMetricEntries = getSortedBodyMeasurements()
     .filter((entry) => Number.isFinite(entry[metric.key]))
-    .map((entry) => ({ label: formatDate(entry.createdAt), value: entry[metric.key] }));
-  renderLineChart($("#measurementChart"), chartData, resolveMetricColor(metric.metricColorKey || metric.key));
+    .map((entry) => ({
+      date: entry.createdAt,
+      label: formatDate(entry.createdAt),
+      value: entry[metric.key]
+    }));
+  const chartData = allMetricEntries
+    .filter((entry) => new Date(entry.date) >= cutoff)
+    .map((entry) => ({
+      date: entry.date,
+      label: entry.label,
+      value: entry.value
+    }));
+  renderAdaptiveMeasurementPerformance(metric, chartData, cutoff, allMetricEntries);
 }
 
 function saveBodyMeasurement() {
@@ -3512,6 +3702,11 @@ function handleInputEvents() {
       renderBodyMeasurementSection();
       return;
     }
+    if (target.id === "measurementMonthsSelect") {
+      ui.measurementMonthsBack = Math.min(12, Math.max(1, parseInt(target.value, 10) || 6));
+      renderBodyMeasurementSection();
+      return;
+    }
     if (target.id === "routineSelect") {
       ui.editRoutineId = target.value;
       renderRoutines();
@@ -3539,15 +3734,19 @@ function handleInputEvents() {
       const value = normalizeMuscleTagValue(target.value);
       if (!value) return;
       event.preventDefault();
+      const options = getMultiSelectOptions(multiId);
+      const existingOption = options.find((option) => option.toLowerCase() === value.toLowerCase());
+      const nextValue = existingOption || value;
       const current = getMultiSelectState(multiId).selected;
-      if (!current.some((entry) => entry.toLowerCase() === value.toLowerCase())) {
-        setMultiSelectSelection(multiId, [...current, value]);
+      if (!current.some((entry) => entry.toLowerCase() === nextValue.toLowerCase())) {
+        setMultiSelectSelection(multiId, [...current, nextValue]);
       }
       const kind = multiSelectMuscleKind(multiId);
-      if (kind) {
-        rememberMuscleTags(kind, [value]);
+      if (kind && !existingOption) {
+        rememberMuscleTags(kind, [nextValue]);
         saveState();
       }
+      setMultiSelectQuery(multiId, "");
       refreshMultiSelect(multiId);
       focusMultiInput(multiId);
       return;
@@ -3631,6 +3830,7 @@ function handleInputEvents() {
           ? current.filter((entry) => entry !== value)
           : [...current, value];
         setMultiSelectSelection(multiId, next);
+        setMultiSelectQuery(multiId, "");
         ui.activeMultiSelect = multiId;
         refreshMultiSelect(multiId);
         focusMultiInput(multiId);
@@ -3650,6 +3850,21 @@ function handleInputEvents() {
           rememberMuscleTags(kind, [value]);
           saveState();
         }
+        setMultiSelectQuery(multiId, "");
+        ui.activeMultiSelect = multiId;
+        refreshMultiSelect(multiId);
+        focusMultiInput(multiId);
+        return;
+      }
+      if (action === "multi-delete-option") {
+        const multiId = button.dataset.multiId || "";
+        const value = String(button.dataset.value || "").trim();
+        const kind = multiSelectMuscleKind(multiId);
+        if (!multiId || !value || !kind) return;
+        const removed = removeMuscleOptionFromLibrary(kind, value);
+        if (!removed) return;
+        removeOptionFromSelections(kind, value);
+        saveState();
         ui.activeMultiSelect = multiId;
         refreshMultiSelect(multiId);
         focusMultiInput(multiId);
