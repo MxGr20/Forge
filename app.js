@@ -94,6 +94,8 @@ const ui = {
   replaceTarget: null,
   replaceSearch: "",
   editExerciseId: null,
+  historyActionTarget: null,
+  historyEditTarget: null,
   historyFilter: "all",
   measurementMetric: "bodyWeight"
 };
@@ -1195,7 +1197,7 @@ function renderWorkoutHistoryItem(workout) {
       </div>
       <div class="history-actions">
         <div class="title">${volume.toFixed(0)} kg</div>
-        <button class="ghost icon-btn" data-action="history-delete" data-entry-type="workout" data-workout-id="${workout.id}" aria-label="Delete workout">⋯</button>
+        <button class="ghost icon-btn" data-action="history-options" data-entry-type="workout" data-workout-id="${workout.id}" aria-label="History entry options">⋯</button>
       </div>
     </div>
   `;
@@ -1213,7 +1215,7 @@ function renderMeasurementHistoryItem(measurement) {
       </div>
       <div class="history-actions">
         <div class="title">${primary}</div>
-        <button class="ghost icon-btn" data-action="history-delete" data-entry-type="measurement" data-measurement-id="${measurement.id}" aria-label="Delete measurement">⋯</button>
+        <button class="ghost icon-btn" data-action="history-options" data-entry-type="measurement" data-measurement-id="${measurement.id}" aria-label="History entry options">⋯</button>
       </div>
     </div>
   `;
@@ -1363,6 +1365,113 @@ function closeHistorySheet() {
   if (sheet) sheet.classList.add("hidden");
 }
 
+function getHistoryTarget(type, id) {
+  if (type === "measurement") {
+    const measurement = state.bodyMeasurements.find((entry) => entry.id === id);
+    return measurement ? { type, id, label: "Body Measurement" } : null;
+  }
+  const workout = state.workouts.find((entry) => entry.id === id);
+  return workout ? { type: "workout", id, label: workout.name || "Workout" } : null;
+}
+
+function openHistoryActionSheet(type, id) {
+  const target = getHistoryTarget(type, id);
+  if (!target) return;
+  ui.historyActionTarget = target;
+  const title = $("#historyActionTitle");
+  if (title) title.textContent = target.label;
+  const sheet = $("#historyActionSheet");
+  if (sheet) sheet.classList.remove("hidden");
+}
+
+function closeHistoryActionSheet() {
+  const sheet = $("#historyActionSheet");
+  if (sheet) sheet.classList.add("hidden");
+  ui.historyActionTarget = null;
+}
+
+function measurementEditInputId(fieldKey) {
+  return `historyEditMeasure${fieldKey.charAt(0).toUpperCase()}${fieldKey.slice(1)}`;
+}
+
+function openHistoryEditSheet(type, id) {
+  const target = getHistoryTarget(type, id);
+  if (!target) return;
+  ui.historyEditTarget = target;
+  const title = $("#historyEditTitle");
+  if (title) title.textContent = target.type === "measurement" ? "Edit Body Measurement" : "Edit Workout";
+
+  const workoutFields = $("#historyEditWorkoutFields");
+  const measurementFields = $("#historyEditMeasurementFields");
+  if (workoutFields) workoutFields.classList.toggle("hidden", target.type !== "workout");
+  if (measurementFields) measurementFields.classList.toggle("hidden", target.type !== "measurement");
+
+  if (target.type === "workout") {
+    const workout = state.workouts.find((entry) => entry.id === target.id);
+    if (!workout) return;
+    const name = $("#historyEditWorkoutName");
+    const bodyweight = $("#historyEditWorkoutBodyweight");
+    const notes = $("#historyEditWorkoutNotes");
+    if (name) name.value = workout.name || "";
+    if (bodyweight) bodyweight.value = Number.isFinite(workout.bodyweight) ? workout.bodyweight : "";
+    if (notes) notes.value = workout.notes || "";
+  } else {
+    const measurement = state.bodyMeasurements.find((entry) => entry.id === target.id);
+    if (!measurement) return;
+    BODY_MEASUREMENT_FIELDS.forEach((field) => {
+      const input = $(`#${measurementEditInputId(field.key)}`);
+      if (!input) return;
+      const value = measurement[field.key];
+      input.value = Number.isFinite(value) ? value.toFixed(field.decimals) : "";
+    });
+  }
+
+  closeHistoryActionSheet();
+  const sheet = $("#historyEditSheet");
+  if (sheet) sheet.classList.remove("hidden");
+}
+
+function closeHistoryEditSheet() {
+  const sheet = $("#historyEditSheet");
+  if (sheet) sheet.classList.add("hidden");
+  ui.historyEditTarget = null;
+}
+
+function saveHistoryEdit() {
+  const target = ui.historyEditTarget;
+  if (!target) return;
+
+  if (target.type === "workout") {
+    const workout = state.workouts.find((entry) => entry.id === target.id);
+    if (!workout) return;
+    const name = $("#historyEditWorkoutName")?.value.trim() || "";
+    const bodyweightValue = parseFloat($("#historyEditWorkoutBodyweight")?.value || "");
+    const notes = $("#historyEditWorkoutNotes")?.value.trim() || "";
+    workout.name = name || "Workout";
+    workout.bodyweight = Number.isFinite(bodyweightValue) ? bodyweightValue : null;
+    workout.notes = notes;
+  } else {
+    const measurement = state.bodyMeasurements.find((entry) => entry.id === target.id);
+    if (!measurement) return;
+    BODY_MEASUREMENT_FIELDS.forEach((field) => {
+      const input = $(`#${measurementEditInputId(field.key)}`);
+      const value = parseFloat(input?.value || "");
+      measurement[field.key] = Number.isFinite(value) ? value : null;
+    });
+    const latestWeight = getLatestBodyWeight();
+    if (Number.isFinite(latestWeight)) {
+      state.settings.bodyweight = latestWeight;
+    }
+  }
+
+  saveState();
+  renderHistory();
+  renderStats();
+  renderTools();
+  closeHistoryEditSheet();
+  toast("History entry updated");
+}
+
 function deleteWorkout(workoutId) {
   const workout = state.workouts.find((w) => w.id === workoutId);
   if (!workout) return;
@@ -1372,6 +1481,8 @@ function deleteWorkout(workoutId) {
   saveState();
   renderHistory();
   renderStats();
+  closeHistoryActionSheet();
+  closeHistoryEditSheet();
   closeHistorySheet();
 }
 
@@ -1384,6 +1495,8 @@ function deleteBodyMeasurement(measurementId) {
   renderHistory();
   renderStats();
   renderTools();
+  closeHistoryActionSheet();
+  closeHistoryEditSheet();
   closeHistorySheet();
 }
 
@@ -1603,80 +1716,174 @@ function getExercisePerformanceData(exerciseId) {
   return { sessions, totalWeight, totalReps };
 }
 
-function buildChartAxis(labels) {
+function buildChartAxis(labels, slots = 4) {
   if (!labels.length) return "";
-  const first = labels[0];
-  const mid = labels[Math.floor((labels.length - 1) / 2)];
-  const last = labels[labels.length - 1];
+  const normalizedSlots = Math.max(2, Math.min(slots, labels.length));
+  const indices = [];
+  for (let i = 0; i < normalizedSlots; i += 1) {
+    const ratio = normalizedSlots === 1 ? 0 : i / (normalizedSlots - 1);
+    indices.push(Math.round(ratio * (labels.length - 1)));
+  }
+  const uniqueIndices = Array.from(new Set(indices));
   return `
     <div class="chart-axis">
-      <span>${esc(first)}</span>
-      <span>${esc(mid)}</span>
-      <span>${esc(last)}</span>
+      ${uniqueIndices.map((idx) => `<span>${esc(labels[idx])}</span>`).join("")}
     </div>
   `;
 }
 
-function renderLineChart(container, data, color) {
+function niceStep(rawStep) {
+  const safeStep = Math.max(0.0001, rawStep);
+  const exponent = Math.floor(Math.log10(safeStep));
+  const magnitude = 10 ** exponent;
+  const normalized = safeStep / magnitude;
+  if (normalized <= 1) return 1 * magnitude;
+  if (normalized <= 2) return 2 * magnitude;
+  if (normalized <= 5) return 5 * magnitude;
+  return 10 * magnitude;
+}
+
+function buildNumericAxis(values, options = {}) {
+  const { tickCount = 5, forceZero = true, integerOnly = false } = options;
+  const maxValue = Math.max(...values, 0);
+  const minValue = forceZero ? 0 : Math.min(...values, 0);
+  if (maxValue <= minValue) {
+    return { min: 0, max: 1, ticks: [0, 1] };
+  }
+  const roughStep = (maxValue - minValue) / Math.max(2, tickCount - 1);
+  let step = niceStep(roughStep);
+  if (integerOnly) step = Math.max(1, Math.round(step));
+  const min = forceZero ? 0 : Math.floor(minValue / step) * step;
+  const max = Math.ceil(maxValue / step) * step;
+  const ticks = [];
+  for (let value = min; value <= max + (step / 2); value += step) {
+    ticks.push(integerOnly ? Math.round(value) : value);
+  }
+  return { min, max, ticks };
+}
+
+function defaultTickFormatter(value, options = {}) {
+  if (options.integerOnly) return `${Math.round(value)}`;
+  if (Math.abs(value) >= 100) return `${Math.round(value)}`;
+  if (Math.abs(value) >= 10) return `${value.toFixed(1).replace(/\.0$/, "")}`;
+  return `${value.toFixed(2).replace(/\.00$/, "").replace(/(\.\d)0$/, "$1")}`;
+}
+
+function formatDateRange(startDate, endDate) {
+  const start = new Date(startDate);
+  const end = new Date(endDate);
+  if (Number.isNaN(start.getTime()) || Number.isNaN(end.getTime())) return "";
+  const sameYear = start.getFullYear() === end.getFullYear();
+  const startFmt = start.toLocaleDateString(undefined, sameYear
+    ? { month: "short", day: "numeric" }
+    : { month: "short", day: "numeric", year: "numeric" });
+  const endFmt = end.toLocaleDateString(undefined, { month: "short", day: "numeric", year: "numeric" });
+  return `${startFmt} - ${endFmt}`;
+}
+
+function renderLineChart(container, data, color, options = {}) {
   if (!container) return;
   if (!data.length) {
     container.innerHTML = "<div class=\"muted small\">No data yet.</div>";
     return;
   }
-  const width = 320;
-  const height = 160;
-  const pad = 20;
-  const values = data.map((d) => d.value);
-  const max = Math.max(...values);
-  const min = Math.min(...values);
-  const span = max - min || 1;
-  const step = data.length > 1 ? (width - pad * 2) / (data.length - 1) : 0;
-  const points = data.map((d, i) => {
-    const x = pad + step * i;
-    const y = height - pad - ((d.value - min) / span) * (height - pad * 2);
-    return { x, y };
+  const width = 340;
+  const height = 180;
+  const left = 38;
+  const right = 10;
+  const top = 12;
+  const bottom = 22;
+  const plotWidth = width - left - right;
+  const plotHeight = height - top - bottom;
+  const values = data.map((entry) => Number.isFinite(entry.value) ? entry.value : 0);
+  const axis = buildNumericAxis(values, {
+    tickCount: options.tickCount || 5,
+    forceZero: options.forceZero !== false,
+    integerOnly: !!options.integerOnly
   });
+  const span = axis.max - axis.min || 1;
+  const stepX = data.length > 1 ? plotWidth / (data.length - 1) : 0;
+
+  const points = data.map((entry, idx) => {
+    const x = left + stepX * idx;
+    const value = Number.isFinite(entry.value) ? entry.value : 0;
+    const y = top + ((axis.max - value) / span) * plotHeight;
+    return { x, y, value };
+  });
+
+  const gridLines = axis.ticks.map((tick) => {
+    const y = top + ((axis.max - tick) / span) * plotHeight;
+    const tickLabel = options.tickFormatter
+      ? options.tickFormatter(tick)
+      : defaultTickFormatter(tick, { integerOnly: !!options.integerOnly });
+    return `
+      <line x1="${left}" y1="${y}" x2="${width - right}" y2="${y}" stroke="rgba(255,255,255,0.13)" stroke-width="1" stroke-dasharray="2 3" />
+      <text x="${left - 6}" y="${y + 3}" fill="#9da3b4" font-size="10" text-anchor="end">${esc(tickLabel)}</text>
+    `;
+  }).join("");
+
   const polyline = points.map((point) => `${point.x},${point.y}`).join(" ");
-  const circles = points.map((point) => `<circle cx="${point.x}" cy="${point.y}" r="2.8" fill="${color}" />`).join("");
+  const dots = points.map((point) => `<circle cx="${point.x}" cy="${point.y}" r="2.6" fill="${color}" />`).join("");
 
   container.innerHTML = `
-    <svg viewBox="0 0 ${width} ${height}" width="100%" height="160" preserveAspectRatio="none">
-      <polyline points="${polyline}" fill="none" stroke="${color}" stroke-width="3" stroke-linecap="round" stroke-linejoin="round" />
-      ${circles}
+    <svg viewBox="0 0 ${width} ${height}" width="100%" height="180" preserveAspectRatio="none">
+      ${gridLines}
+      <polyline points="${polyline}" fill="none" stroke="${color}" stroke-width="2.8" stroke-linecap="round" stroke-linejoin="round" />
+      ${dots}
     </svg>
-    ${buildChartAxis(data.map((entry) => entry.label))}
+    ${buildChartAxis(data.map((entry) => entry.label), 4)}
   `;
 }
 
-function renderMultiLineChart(container, labels, series) {
+function renderMultiLineChart(container, labels, series, options = {}) {
   if (!container) return;
   if (!labels.length || !series.length) {
     container.innerHTML = "<div class=\"muted small\">No data yet.</div>";
     return;
   }
-  const width = 320;
-  const height = 160;
-  const pad = 20;
-  const values = series.flatMap((entry) => entry.values);
-  const max = Math.max(...values, 1);
-  const step = labels.length > 1 ? (width - pad * 2) / (labels.length - 1) : 0;
+  const width = 340;
+  const height = 180;
+  const left = 38;
+  const right = 10;
+  const top = 12;
+  const bottom = 22;
+  const plotWidth = width - left - right;
+  const plotHeight = height - top - bottom;
+  const values = series.flatMap((entry) => entry.values.map((value) => Number.isFinite(value) ? value : 0));
+  const axis = buildNumericAxis(values, {
+    tickCount: options.tickCount || 6,
+    forceZero: true,
+    integerOnly: options.integerOnly !== false
+  });
+  const span = axis.max - axis.min || 1;
+  const stepX = labels.length > 1 ? plotWidth / (labels.length - 1) : 0;
+
+  const gridLines = axis.ticks.map((tick) => {
+    const y = top + ((axis.max - tick) / span) * plotHeight;
+    return `
+      <line x1="${left}" y1="${y}" x2="${width - right}" y2="${y}" stroke="rgba(255,255,255,0.13)" stroke-width="1" stroke-dasharray="2 3" />
+      <text x="${left - 6}" y="${y + 3}" fill="#9da3b4" font-size="10" text-anchor="end">${Math.round(tick)}</text>
+    `;
+  }).join("");
 
   const lines = series.map((entry) => {
     const points = entry.values.map((value, idx) => {
-      const x = pad + step * idx;
-      const y = height - pad - ((value || 0) / max) * (height - pad * 2);
+      const safe = Number.isFinite(value) ? value : 0;
+      const x = left + stepX * idx;
+      const y = top + ((axis.max - safe) / span) * plotHeight;
       return { x, y };
     });
     const polyline = points.map((point) => `${point.x},${point.y}`).join(" ");
     const circles = points.map((point) => `<circle cx="${point.x}" cy="${point.y}" r="2.2" fill="${entry.color}" />`).join("");
-    return `<polyline points="${polyline}" fill="none" stroke="${entry.color}" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" />${circles}`;
+    return `<polyline points="${polyline}" fill="none" stroke="${entry.color}" stroke-width="2.1" stroke-linecap="round" stroke-linejoin="round" />${circles}`;
   }).join("");
 
   container.innerHTML = `
-    <svg viewBox="0 0 ${width} ${height}" width="100%" height="160" preserveAspectRatio="none">
+    <svg viewBox="0 0 ${width} ${height}" width="100%" height="180" preserveAspectRatio="none">
+      ${gridLines}
       ${lines}
     </svg>
-    ${buildChartAxis(labels)}
+    ${buildChartAxis(labels, 4)}
   `;
 }
 
@@ -1773,8 +1980,15 @@ function computeMuscleVolumeSeries(grouping, monthsBack, dimension, selectedMusc
     name: muscle,
     color: MUSCLE_CHART_COLORS[idx % MUSCLE_CHART_COLORS.length],
     values: ordered.map((entry) => entry.counts[muscle] || 0)
-  })).filter((entry) => entry.values.some((value) => value > 0));
-  return { labels, series };
+  }))
+    .map((entry) => ({
+      ...entry,
+      total: entry.values.reduce((sum, value) => sum + value, 0)
+    }))
+    .filter((entry) => entry.values.some((value) => value > 0));
+  const fromDate = ordered[0]?.date || null;
+  const toDate = ordered[ordered.length - 1]?.date || null;
+  return { labels, series, fromDate, toDate, cutoff };
 }
 
 function renderMuscleGroupSection() {
@@ -1782,8 +1996,12 @@ function renderMuscleGroupSection() {
   if (groupingSelect) groupingSelect.value = ui.muscleGrouping;
   const monthsSelect = $("#muscleMonthsSelect");
   ui.muscleMonthsBack = populateMonthRangeSelect(monthsSelect, ui.muscleMonthsBack, 1);
-  const dimensionSelect = $("#muscleDimensionSelect");
-  if (dimensionSelect) dimensionSelect.value = ui.muscleDimension;
+  const toggle = $("#muscleDimensionToggle");
+  if (toggle) {
+    $$("button[data-dimension]", toggle).forEach((button) => {
+      button.classList.toggle("active", button.dataset.dimension === ui.muscleDimension);
+    });
+  }
 
   const availableMuscles = collectAvailableMuscles(ui.muscleDimension);
   const validSelection = ui.selectedMuscles.filter((muscle) => availableMuscles.includes(muscle));
@@ -1806,13 +2024,29 @@ function renderMuscleGroupSection() {
     ui.muscleDimension,
     ui.selectedMuscles
   );
-  renderMultiLineChart($("#muscleVolumeChart"), data.labels, data.series);
+  renderMultiLineChart($("#muscleVolumeChart"), data.labels, data.series, { integerOnly: true });
+
+  const rangeEl = $("#muscleChartRange");
+  if (rangeEl) {
+    const start = data.fromDate || data.cutoff;
+    const end = data.toDate || new Date();
+    const sourceLabel = ui.muscleDimension === "detailed" ? "Detailed muscles" : "Primary muscles";
+    rangeEl.textContent = `Visualized range: ${formatDateRange(start, end)} · ${sourceLabel}`;
+  }
 
   const legend = $("#muscleChartLegend");
   if (legend) {
     legend.innerHTML = data.series.length
       ? data.series.map((entry) => {
-        return `<div class="legend-item"><span class="legend-swatch" style="background:${entry.color};"></span><span>${esc(entry.name)}</span></div>`;
+        return `
+          <div class="legend-item">
+            <span class="legend-name">
+              <span class="legend-swatch" style="background:${entry.color};"></span>
+              <span>${esc(entry.name)}</span>
+            </span>
+            <span class="legend-total">${entry.total}</span>
+          </div>
+        `;
       }).join("")
       : "<div class=\"muted small\">No muscle data in selected range.</div>";
   }
@@ -1858,6 +2092,7 @@ function renderStats() {
   if (chartTitle) {
     chartTitle.textContent = `${selectedMetric.label} · Last ${ui.statsMonthsBack} month${ui.statsMonthsBack === 1 ? "" : "s"}`;
   }
+  const rangeEl = $("#exerciseMetricRange");
 
   const totalWeightEl = $("#statTotalWeightAll");
   const totalRepsEl = $("#statTotalRepsAll");
@@ -1865,6 +2100,7 @@ function renderStats() {
     if (totalWeightEl) totalWeightEl.textContent = "-";
     if (totalRepsEl) totalRepsEl.textContent = "-";
     renderLineChart($("#exerciseMetricChart"), [], selectedMetric.color);
+    if (rangeEl) rangeEl.textContent = "";
   } else {
     const performance = getExercisePerformanceData(ui.statsExerciseId);
     if (totalWeightEl) {
@@ -1879,15 +2115,23 @@ function renderStats() {
     }
 
     const cutoff = getMonthsBackCutoff(ui.statsMonthsBack);
-    const chartData = performance.sessions
-      .filter((session) => new Date(session.date) >= cutoff)
+    const sessionsInRange = performance.sessions
+      .filter((session) => new Date(session.date) >= cutoff);
+    const chartData = sessionsInRange
+      .sort((a, b) => new Date(a.date) - new Date(b.date))
       .map((session) => ({
         date: session.date,
         label: formatDate(session.date),
         value: Number.isFinite(session[selectedMetric.key]) ? session[selectedMetric.key] : 0
-      }))
-      .filter((entry) => entry.value > 0);
-    renderLineChart($("#exerciseMetricChart"), chartData, selectedMetric.color);
+      }));
+    renderLineChart($("#exerciseMetricChart"), chartData, selectedMetric.color, {
+      integerOnly: selectedMetric.key === "mostReps"
+    });
+    if (rangeEl) {
+      const start = chartData[0]?.date || cutoff;
+      const end = chartData[chartData.length - 1]?.date || new Date();
+      rangeEl.textContent = `Visualized range: ${formatDateRange(start, end)} · Metric: ${selectedMetric.label}`;
+    }
   }
 
   renderMuscleGroupSection();
@@ -2367,12 +2611,6 @@ function handleInputEvents() {
       renderStats();
       return;
     }
-    if (target.id === "muscleDimensionSelect") {
-      ui.muscleDimension = target.value || "primary";
-      ui.selectedMuscles = [];
-      renderStats();
-      return;
-    }
     if (target.id === "muscleFilterSelect") {
       ui.selectedMuscles = Array.from(target.selectedOptions).map((option) => option.value);
       renderStats();
@@ -2410,6 +2648,14 @@ function handleInputEvents() {
       }
       if (event.target.id === "historySheet") {
         closeHistorySheet();
+        return;
+      }
+      if (event.target.id === "historyActionSheet") {
+        closeHistoryActionSheet();
+        return;
+      }
+      if (event.target.id === "historyEditSheet") {
+        closeHistoryEditSheet();
         return;
       }
       if (event.target.id === "replaceSheet") {
@@ -2540,18 +2786,57 @@ function handleInputEvents() {
         openHistorySheet(entryType, entryId);
         return;
       }
-      if (action === "history-delete") {
+      if (action === "history-options") {
         const entryType = button.dataset.entryType || "workout";
-        if (entryType === "measurement") {
-          deleteBodyMeasurement(button.dataset.measurementId);
+        const entryId = entryType === "measurement" ? button.dataset.measurementId : button.dataset.workoutId;
+        openHistoryActionSheet(entryType, entryId);
+        return;
+      }
+      if (action === "history-action-view") {
+        const target = ui.historyActionTarget;
+        if (target) openHistorySheet(target.type, target.id);
+        closeHistoryActionSheet();
+        return;
+      }
+      if (action === "history-action-edit") {
+        const target = ui.historyActionTarget;
+        if (target) openHistoryEditSheet(target.type, target.id);
+        return;
+      }
+      if (action === "history-action-delete") {
+        const target = ui.historyActionTarget;
+        if (!target) return;
+        if (target.type === "measurement") {
+          deleteBodyMeasurement(target.id);
         } else {
-          deleteWorkout(button.dataset.workoutId);
+          deleteWorkout(target.id);
         }
+        return;
+      }
+      if (action === "history-action-close") {
+        closeHistoryActionSheet();
+        return;
+      }
+      if (action === "history-edit-save") {
+        saveHistoryEdit();
+        return;
+      }
+      if (action === "history-edit-close") {
+        closeHistoryEditSheet();
         return;
       }
       if (action === "history-filter") {
         ui.historyFilter = button.dataset.filter || "all";
         renderHistory();
+        return;
+      }
+      if (action === "muscle-dimension") {
+        const next = button.dataset.dimension === "detailed" ? "detailed" : "primary";
+        if (ui.muscleDimension !== next) {
+          ui.muscleDimension = next;
+          ui.selectedMuscles = [];
+        }
+        renderStats();
         return;
       }
       if (action === "history-close") {

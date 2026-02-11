@@ -193,6 +193,7 @@
           <div class="chart-card">
             <div class="chart-title" id="exerciseMetricTitle">Exercise Progression</div>
             <div id="exerciseMetricChart" class="chart"></div>
+            <div id="exerciseMetricRange" class="muted small chart-range"></div>
           </div>
         </div>
 
@@ -213,13 +214,13 @@
               Range
               <select id="muscleMonthsSelect"></select>
             </label>
-            <label class="inline-control">
-              Muscle Source
-              <select id="muscleDimensionSelect">
-                <option value="primary">Primary</option>
-                <option value="detailed">Detailed</option>
-              </select>
-            </label>
+            <div class="inline-control">
+              <div class="muted small">Muscle Source</div>
+              <div class="segment-toggle" id="muscleDimensionToggle">
+                <button class="ghost small" data-action="muscle-dimension" data-dimension="primary">Primary</button>
+                <button class="ghost small" data-action="muscle-dimension" data-dimension="detailed">Detailed</button>
+              </div>
+            </div>
           </div>
           <label>
             Muscles to Track (multi-select)
@@ -229,6 +230,7 @@
           <div class="chart-card">
             <div class="chart-title">Sets by Muscle Group</div>
             <div id="muscleVolumeChart" class="chart"></div>
+            <div id="muscleChartRange" class="muted small chart-range"></div>
             <div id="muscleChartLegend" class="chart-legend"></div>
           </div>
         </div>
@@ -330,10 +332,21 @@
               <input type="text" data-setting="plates" id="plates">
             </label>
           </div>
+        </div>
+
+        <div class="panel">
+          <div class="row space">
+            <h2>Plate Calculator</h2>
+          </div>
           <label class="switch">
             Include Bar Weight In Plate Calculator
             <input type="checkbox" data-setting="includeBarWeightInCalc" id="includeBarWeightInCalc">
           </label>
+          <div class="row wrap">
+            <input type="number" step="0.5" id="plateTarget" placeholder="Target weight (kg)">
+            <button class="primary" data-action="calc-plates">Calculate</button>
+          </div>
+          <div id="plateResults" class="result-list"></div>
         </div>
 
         <div class="panel">
@@ -354,18 +367,7 @@
 
         <div class="panel">
           <div class="row space">
-            <h2>Plate Calculator</h2>
-          </div>
-          <div class="row wrap">
-            <input type="number" step="0.5" id="plateTarget" placeholder="Target weight (kg)">
-            <button class="primary" data-action="calc-plates">Calculate</button>
-          </div>
-          <div id="plateResults" class="result-list"></div>
-        </div>
-
-        <div class="panel">
-          <div class="row space">
-            <h2>Export and Backup</h2>
+            <h2>Export and Back-Up</h2>
           </div>
           <div class="row wrap">
             <button class="primary" data-action="export-csv">Export CSV</button>
@@ -418,6 +420,73 @@
           <button class="ghost icon-btn" data-action="history-close">✕</button>
         </div>
         <div id="historyDetails"></div>
+      </div>
+    </div>
+
+    <div id="historyActionSheet" class="sheet hidden">
+      <div class="sheet-card">
+        <div class="row space">
+          <div class="sheet-title" id="historyActionTitle">History Entry</div>
+          <button class="ghost icon-btn" data-action="history-action-close">✕</button>
+        </div>
+        <button class="primary wide" data-action="history-action-view">View</button>
+        <button class="ghost wide" data-action="history-action-edit">Edit</button>
+        <button class="danger wide" data-action="history-action-delete">Delete</button>
+        <button class="ghost wide" data-action="history-action-close">Cancel</button>
+      </div>
+    </div>
+
+    <div id="historyEditSheet" class="sheet hidden">
+      <div class="sheet-card">
+        <div class="row space">
+          <div class="sheet-title" id="historyEditTitle">Edit Entry</div>
+          <button class="ghost icon-btn" data-action="history-edit-close">✕</button>
+        </div>
+
+        <div id="historyEditWorkoutFields" class="history-edit-section">
+          <label>
+            Workout Name
+            <input type="text" id="historyEditWorkoutName" placeholder="Workout name">
+          </label>
+          <label>
+            Bodyweight (kg)
+            <input type="number" step="0.1" id="historyEditWorkoutBodyweight" placeholder="Bodyweight">
+          </label>
+          <label>
+            Notes
+            <input type="text" id="historyEditWorkoutNotes" placeholder="Workout notes">
+          </label>
+        </div>
+
+        <div id="historyEditMeasurementFields" class="history-edit-section">
+          <label>
+            Body Weight (kg)
+            <input type="number" step="0.1" id="historyEditMeasureBodyWeight" placeholder="101.3">
+          </label>
+          <label>
+            Muscle Weight (kg)
+            <input type="number" step="0.1" id="historyEditMeasureMuscleWeight" placeholder="81.5">
+          </label>
+          <label>
+            Bone Weight (kg)
+            <input type="number" step="0.1" id="historyEditMeasureBoneWeight" placeholder="4.2">
+          </label>
+          <label>
+            Body Fat (%)
+            <input type="number" step="0.1" id="historyEditMeasureBodyFat" placeholder="15.5">
+          </label>
+          <label>
+            TBW (%)
+            <input type="number" step="0.1" id="historyEditMeasureTbw" placeholder="61.0">
+          </label>
+          <label>
+            BMI
+            <input type="number" step="0.1" id="historyEditMeasureBmi" placeholder="26.1">
+          </label>
+        </div>
+
+        <button class="primary wide" data-action="history-edit-save">Save</button>
+        <button class="ghost wide" data-action="history-edit-close">Cancel</button>
       </div>
     </div>
 

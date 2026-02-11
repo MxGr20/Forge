@@ -851,6 +851,28 @@ input[data-field="workout-name"] {
   width: 100%;
 }
 
+.segment-toggle {
+  margin-top: 6px;
+  display: inline-flex;
+  gap: 6px;
+  padding: 4px;
+  border-radius: 12px;
+  background: #171821;
+  border: 1px solid var(--border);
+}
+
+.segment-toggle button {
+  min-width: 88px;
+  border-radius: 9px;
+  padding: 7px 10px;
+}
+
+.segment-toggle button.active {
+  background: var(--accent);
+  border-color: transparent;
+  color: #fff;
+}
+
 .stat-card {
   background: #1c1e2a;
   border: 1px solid var(--border);
@@ -907,6 +929,11 @@ input[data-field="workout-name"] {
   text-align: right;
 }
 
+#exerciseMetricRange,
+#muscleChartRange {
+  margin-top: 6px;
+}
+
 #muscleFilterSelect {
   width: 100%;
   min-height: 150px;
@@ -914,16 +941,27 @@ input[data-field="workout-name"] {
 
 .chart-legend {
   margin-top: 10px;
-  display: flex;
-  flex-wrap: wrap;
-  gap: 8px 12px;
+  display: grid;
+  gap: 6px;
 }
 
 .legend-item {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  font-size: 12px;
+  color: var(--ink);
+  background: #171821;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  padding: 6px 8px;
+}
+
+.legend-name {
   display: inline-flex;
   align-items: center;
   gap: 6px;
-  font-size: 12px;
   color: var(--muted);
 }
 
@@ -932,6 +970,11 @@ input[data-field="workout-name"] {
   height: 10px;
   border-radius: 999px;
   display: inline-block;
+}
+
+.legend-total {
+  font-weight: 700;
+  color: var(--ink);
 }
 
 .result-list {
@@ -1028,6 +1071,15 @@ input[data-field="workout-name"] {
   gap: 4px;
   font-size: 12px;
   color: var(--muted);
+}
+
+.history-edit-section {
+  display: grid;
+  gap: 8px;
+}
+
+.history-edit-section.hidden {
+  display: none;
 }
 
 .tools-grid {
