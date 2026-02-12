@@ -1369,12 +1369,21 @@ input[data-field="workout-name"] {
 
 .multi-option-row {
   display: grid;
-  grid-template-columns: 1rem minmax(0, 1fr) auto;
+  grid-template-columns: 1rem minmax(0, 1fr);
   align-items: center;
   gap: 0.35rem;
   cursor: pointer;
   padding: 0.58rem 0.68rem;
   border-bottom: 1px solid rgb(var(--brand-soft-rgb) / 0.46);
+  width: 100%;
+  text-align: left;
+  border-radius: 0;
+  border-inline: none;
+  border-top: none;
+  border-bottom: 1px solid rgb(var(--brand-soft-rgb) / 0.46);
+  background: transparent;
+  box-shadow: none;
+  transform: none;
 }
 
 .multi-option-row:last-child {
@@ -1384,6 +1393,8 @@ input[data-field="workout-name"] {
 .multi-option-row:hover,
 .multi-option-row.selected {
   background: rgb(var(--brand-rgb) / 0.16);
+  box-shadow: none;
+  transform: none;
 }
 
 .multi-option-check {
@@ -1441,6 +1452,20 @@ input[data-field="workout-name"] {
   justify-content: center;
   padding: 0;
   font-size: 0.875rem;
+}
+
+.history-edit-workout-items {
+  display: grid;
+  gap: 10px;
+}
+
+.history-edit-workout-item {
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  padding: 10px;
+  background: var(--color-surface-muted);
+  display: grid;
+  gap: 8px;
 }
 
 .multi-option-remove:hover {

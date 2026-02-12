@@ -667,6 +667,26 @@ function formatDateTime(iso) {
   return d.toLocaleString();
 }
 
+function toLocalDateTimeInputValue(iso) {
+  const date = new Date(iso);
+  if (Number.isNaN(date.getTime())) return "";
+  const pad = (value) => String(value).padStart(2, "0");
+  const year = date.getFullYear();
+  const month = pad(date.getMonth() + 1);
+  const day = pad(date.getDate());
+  const hour = pad(date.getHours());
+  const minute = pad(date.getMinutes());
+  return `${year}-${month}-${day}T${hour}:${minute}`;
+}
+
+function parseLocalDateTimeInputValue(value, fallbackIso = null) {
+  const raw = String(value || "").trim();
+  if (!raw) return fallbackIso;
+  const parsed = new Date(raw);
+  if (Number.isNaN(parsed.getTime())) return fallbackIso;
+  return parsed.toISOString();
+}
+
 function findBodyMeasurementField(fieldKey) {
   return BODY_MEASUREMENT_FIELDS.find((field) => field.key === fieldKey) || BODY_MEASUREMENT_FIELDS[0];
 }
@@ -1075,7 +1095,7 @@ function validateExerciseTagSelection(mode = "create") {
   ui.activeMultiSelect = focusId;
   renderExerciseMuscleSelectors();
   focusMultiInput(focusId);
-  toast("Select at least one primary and one detailed muscle tag");
+  toast("Select at least one primary and one secondary muscle tag");
   return false;
 }
 
@@ -1727,6 +1747,71 @@ function measurementEditInputId(fieldKey) {
   return `historyEditMeasure${fieldKey.charAt(0).toUpperCase()}${fieldKey.slice(1)}`;
 }
 
+function historyWorkoutSetCountInputId(itemId) {
+  return `historyEditSetCount-${itemId}`;
+}
+
+function historyWorkoutMetricInputId(itemId) {
+  return `historyEditSetMetric-${itemId}`;
+}
+
+function createWorkoutSet(type = "weight") {
+  const normalizedType = type === "assisted" || type === "duration" ? type : "weight";
+  return {
+    id: uid(),
+    type: normalizedType,
+    tag: "work",
+    completed: false
+  };
+}
+
+function parseHistoryMetricValues(raw, durationMode = false) {
+  const values = String(raw || "")
+    .split(",")
+    .map((entry) => entry.trim())
+    .filter(Boolean);
+  return values.map((entry) => {
+    const parsed = durationMode ? parseFloat(entry) : parseInt(entry, 10);
+    if (!Number.isFinite(parsed) || parsed < 0) return null;
+    return durationMode ? Math.round(parsed) : parsed;
+  });
+}
+
+function renderHistoryWorkoutEditItems(workout) {
+  const container = $("#historyEditWorkoutItems");
+  if (!container) return;
+  if (!Array.isArray(workout.items) || !workout.items.length) {
+    container.innerHTML = "<div class=\"muted small\">No exercises in this workout.</div>";
+    return;
+  }
+  container.innerHTML = workout.items.map((item) => {
+    const exercise = getExercise(item.exerciseId);
+    const exerciseType = exercise?.type || item.sets?.[0]?.type || "weight";
+    const durationMode = exerciseType === "duration";
+    const metricLabel = durationMode ? "Durations (sec)" : "Reps";
+    const metricPlaceholder = durationMode ? "e.g. 60, 45, 45" : "e.g. 10, 8, 8";
+    const metricValues = (item.sets || []).map((set) => {
+      if (durationMode) return Number.isFinite(set.durationSec) ? `${Math.round(set.durationSec)}` : "";
+      return Number.isFinite(set.reps) ? `${Math.round(set.reps)}` : "";
+    }).filter((value) => value !== "").join(", ");
+    return `
+      <div class="history-edit-workout-item">
+        <div class="title">${esc(exercise?.name || "Exercise")}</div>
+        <div class="grid-2">
+          <label>
+            Sets
+            <input type="number" min="0" step="1" id="${historyWorkoutSetCountInputId(item.id)}" value="${item.sets.length}">
+          </label>
+          <label>
+            ${esc(metricLabel)}
+            <input type="text" id="${historyWorkoutMetricInputId(item.id)}" value="${esc(metricValues)}" placeholder="${esc(metricPlaceholder)}">
+          </label>
+        </div>
+      </div>
+    `;
+  }).join("");
+}
+
 function openHistoryEditSheet(type, id) {
   const target = getHistoryTarget(type, id);
   if (!target) return;
@@ -1743,14 +1828,19 @@ function openHistoryEditSheet(type, id) {
     const workout = state.workouts.find((entry) => entry.id === target.id);
     if (!workout) return;
     const name = $("#historyEditWorkoutName");
+    const date = $("#historyEditWorkoutDate");
     const bodyweight = $("#historyEditWorkoutBodyweight");
     const notes = $("#historyEditWorkoutNotes");
     if (name) name.value = workout.name || "";
+    if (date) date.value = toLocalDateTimeInputValue(workout.createdAt);
     if (bodyweight) bodyweight.value = Number.isFinite(workout.bodyweight) ? workout.bodyweight : "";
     if (notes) notes.value = workout.notes || "";
+    renderHistoryWorkoutEditItems(workout);
   } else {
     const measurement = state.bodyMeasurements.find((entry) => entry.id === target.id);
     if (!measurement) return;
+    const date = $("#historyEditMeasurementDate");
+    if (date) date.value = toLocalDateTimeInputValue(measurement.createdAt);
     BODY_MEASUREMENT_FIELDS.forEach((field) => {
       const input = $(`#${measurementEditInputId(field.key)}`);
       if (!input) return;
@@ -1778,14 +1868,55 @@ function saveHistoryEdit() {
     const workout = state.workouts.find((entry) => entry.id === target.id);
     if (!workout) return;
     const name = $("#historyEditWorkoutName")?.value.trim() || "";
+    const dateRaw = $("#historyEditWorkoutDate")?.value || "";
     const bodyweightValue = parseFloat($("#historyEditWorkoutBodyweight")?.value || "");
     const notes = $("#historyEditWorkoutNotes")?.value.trim() || "";
+    const nextCreatedAt = parseLocalDateTimeInputValue(dateRaw, workout.createdAt);
+    const priorCreatedAtMs = Date.parse(workout.createdAt || "");
+    const priorEndedAtMs = Date.parse(workout.endedAt || "");
     workout.name = name || "Workout";
+    workout.createdAt = nextCreatedAt || workout.createdAt;
+    const nextCreatedAtMs = Date.parse(workout.createdAt || "");
+    if (Number.isFinite(priorCreatedAtMs) && Number.isFinite(priorEndedAtMs) && Number.isFinite(nextCreatedAtMs)) {
+      const durationMs = priorEndedAtMs - priorCreatedAtMs;
+      if (durationMs >= 0) {
+        workout.endedAt = new Date(nextCreatedAtMs + durationMs).toISOString();
+      }
+    }
     workout.bodyweight = Number.isFinite(bodyweightValue) ? bodyweightValue : null;
     workout.notes = notes;
+    (workout.items || []).forEach((item) => {
+      const exercise = getExercise(item.exerciseId);
+      const fallbackType = item.sets?.[0]?.type || "weight";
+      const exerciseType = exercise?.type || fallbackType;
+      const setCountInput = $(`#${historyWorkoutSetCountInputId(item.id)}`);
+      const metricInput = $(`#${historyWorkoutMetricInputId(item.id)}`);
+      const setCountValue = parseInt(setCountInput?.value || "", 10);
+      const targetCount = Number.isFinite(setCountValue) ? Math.max(0, setCountValue) : item.sets.length;
+      while (item.sets.length > targetCount) {
+        item.sets.pop();
+      }
+      while (item.sets.length < targetCount) {
+        item.sets.push(createWorkoutSet(exerciseType));
+      }
+      const isDuration = exerciseType === "duration";
+      const metricValues = parseHistoryMetricValues(metricInput?.value || "", isDuration);
+      if (!metricValues.length) return;
+      item.sets.forEach((set, idx) => {
+        const parsed = metricValues[idx];
+        if (!Number.isFinite(parsed)) return;
+        if (isDuration) {
+          set.durationSec = parsed;
+        } else {
+          set.reps = parsed;
+        }
+      });
+    });
   } else {
     const measurement = state.bodyMeasurements.find((entry) => entry.id === target.id);
     if (!measurement) return;
+    const dateRaw = $("#historyEditMeasurementDate")?.value || "";
+    measurement.createdAt = parseLocalDateTimeInputValue(dateRaw, measurement.createdAt) || measurement.createdAt;
     BODY_MEASUREMENT_FIELDS.forEach((field) => {
       const input = $(`#${measurementEditInputId(field.key)}`);
       const value = parseFloat(input?.value || "");
@@ -1948,7 +2079,7 @@ function renderExercises() {
             <div>
               <div class="title">${esc(ex.name)}</div>
               <div class="muted small">Primary: ${esc(ex.primaryMuscleGroups || "Unassigned")}</div>
-              <div class="muted small">Detailed: ${esc(ex.detailedMuscleGroups || "Unassigned")}</div>
+              <div class="muted small">Secondary: ${esc(ex.detailedMuscleGroups || "Unassigned")}</div>
             </div>
             <div class="row">
               <button class="ghost small" data-action="edit-exercise" data-exercise-id="${ex.id}">Edit</button>
@@ -2942,27 +3073,6 @@ function getFilteredMultiSelectOptions(multiId) {
   return options.filter((option) => option.toLowerCase().includes(safeQuery));
 }
 
-function isRemovableMuscleOption(kind, option) {
-  if (kind !== "primary" && kind !== "detailed") return false;
-  const normalized = normalizeMuscleTagValue(option).toLowerCase();
-  return (state.muscleTagLibrary?.[kind] || [])
-    .some((entry) => entry.toLowerCase() === normalized);
-}
-
-function removeMuscleOptionFromLibrary(kind, value) {
-  if (kind !== "primary" && kind !== "detailed") return false;
-  const normalized = normalizeMuscleTagValue(value).toLowerCase();
-  if (!normalized) return false;
-  const current = state.muscleTagLibrary?.[kind] || [];
-  const next = current.filter((entry) => entry.toLowerCase() !== normalized);
-  if (next.length === current.length) return false;
-  if (!state.muscleTagLibrary) {
-    state.muscleTagLibrary = { primary: [], detailed: [] };
-  }
-  state.muscleTagLibrary[kind] = next;
-  return true;
-}
-
 function renderMultiSelectControl({ rootId, multiId, selected, query, options, placeholder }) {
   const root = $(`#${rootId}`);
   if (!root) return;
@@ -2976,27 +3086,21 @@ function renderMultiSelectControl({ rootId, multiId, selected, query, options, p
   const selectedFromFiltered = filteredOptions.filter((option) => selectedLowerSet.has(option.toLowerCase()));
   const allFilteredSelected = filteredOptions.length > 0 && selectedFromFiltered.length === filteredOptions.length;
   const invalid = !!ui.multiSelectValidation?.[multiId];
-  const chips = selected.map((value) => `
+  const chips = selected.map((value, index) => `
     <span class="multi-chip">
       <span>${esc(value)}</span>
-      <button type="button" class="multi-chip-remove" data-action="multi-remove" data-multi-id="${multiId}" data-value="${esc(value)}" aria-label="Remove ${esc(value)}">×</button>
+      <button type="button" class="multi-chip-remove" data-action="multi-remove-index" data-multi-id="${multiId}" data-index="${index}" data-value="${esc(value)}" aria-label="Remove ${esc(value)}">×</button>
     </span>
   `).join("");
   const optionsHtml = filteredOptions.length
     ? filteredOptions.map((option) => {
       const isSelected = selectedLowerSet.has(option.toLowerCase());
       const selectedClass = isSelected ? " selected" : "";
-      const kind = multiSelectMuscleKind(multiId);
-      const removable = isRemovableMuscleOption(kind, option);
-      const removeButton = removable
-        ? `<button type="button" class="multi-option-remove" data-action="multi-delete-option" data-multi-id="${multiId}" data-value="${esc(option)}" aria-label="Remove ${esc(option)} from options">×</button>`
-        : "";
       return `
-        <div class="multi-option-row${selectedClass}" data-action="multi-toggle" data-multi-id="${multiId}" data-value="${esc(option)}">
+        <button type="button" class="multi-option-row${selectedClass}" data-action="multi-toggle" data-multi-id="${multiId}" data-value="${esc(option)}">
           <span class="multi-option-check" aria-hidden="true">${isSelected ? "✓" : ""}</span>
           <span class="multi-option-label">${esc(option)}</span>
-          ${removeButton}
-        </div>
+        </button>
       `;
     }).join("")
     : `<div class="multi-empty">${trimmedQuery ? "No matching tags" : "No saved tags yet"}</div>`;
@@ -3066,28 +3170,6 @@ function refreshMultiSelect(multiId) {
   }
 }
 
-function removeOptionFromSelections(kind, value) {
-  const normalized = normalizeMuscleTagValue(value).toLowerCase();
-  if (!normalized) return;
-  const removeFrom = (list) => list.filter((entry) => entry.toLowerCase() !== normalized);
-
-  if (kind === "primary") {
-    ui.exercisePrimarySelection = removeFrom(ui.exercisePrimarySelection);
-    ui.editExercisePrimarySelection = removeFrom(ui.editExercisePrimarySelection);
-    if (ui.muscleDimension === "primary") {
-      ui.selectedMuscles = removeFrom(ui.selectedMuscles);
-    }
-    return;
-  }
-  if (kind === "detailed") {
-    ui.exerciseDetailedSelection = removeFrom(ui.exerciseDetailedSelection);
-    ui.editExerciseDetailedSelection = removeFrom(ui.editExerciseDetailedSelection);
-    if (ui.muscleDimension === "detailed") {
-      ui.selectedMuscles = removeFrom(ui.selectedMuscles);
-    }
-  }
-}
-
 function renderExerciseMuscleSelectors() {
   renderMultiSelectControl({
     rootId: "exercisePrimaryMusclesSelect",
@@ -3103,7 +3185,7 @@ function renderExerciseMuscleSelectors() {
     selected: ui.exerciseDetailedSelection,
     query: ui.exerciseDetailedQuery,
     options: collectExerciseMuscleOptions("detailed"),
-    placeholder: "Search detailed tags"
+    placeholder: "Search secondary tags"
   });
   renderMultiSelectControl({
     rootId: "editExercisePrimaryMusclesSelect",
@@ -3119,7 +3201,7 @@ function renderExerciseMuscleSelectors() {
     selected: ui.editExerciseDetailedSelection,
     query: ui.editExerciseDetailedQuery,
     options: collectExerciseMuscleOptions("detailed"),
-    placeholder: "Search detailed tags"
+    placeholder: "Search secondary tags"
   });
 }
 
@@ -4070,16 +4152,6 @@ function handleInputEvents() {
       return;
     }
 
-    if (event.key === "Backspace" && !target.value.trim()) {
-      const current = getMultiSelectState(multiId).selected;
-      if (!current.length) return;
-      event.preventDefault();
-      setMultiSelectSelection(multiId, current.slice(0, -1));
-      refreshMultiSelect(multiId);
-      focusMultiInput(multiId);
-      return;
-    }
-
     if (event.key === "Escape") {
       event.preventDefault();
       ui.activeMultiSelect = null;
@@ -4129,6 +4201,9 @@ function handleInputEvents() {
       const button = event.target.closest("[data-action]");
       if (!button) return;
       const action = button.dataset.action;
+      if (action?.startsWith("multi-")) {
+        event.preventDefault();
+      }
       if (action === "multi-focus") {
         const multiId = button.dataset.multiId || null;
         if (!multiId) return;
@@ -4183,8 +4258,10 @@ function handleInputEvents() {
         } else {
           next = current.slice();
           filteredOptions.forEach((option) => {
-            if (currentLower.has(option.toLowerCase())) return;
+            const normalized = option.toLowerCase();
+            if (currentLower.has(normalized)) return;
             next.push(option);
+            currentLower.add(normalized);
           });
         }
         setMultiSelectSelection(multiId, next);
@@ -4198,8 +4275,9 @@ function handleInputEvents() {
         const value = String(button.dataset.value || "").trim();
         if (!multiId || !value) return;
         const current = getMultiSelectState(multiId).selected;
-        const next = current.includes(value)
-          ? current.filter((entry) => entry !== value)
+        const existingIndex = current.findIndex((entry) => entry.toLowerCase() === value.toLowerCase());
+        const next = existingIndex >= 0
+          ? current.filter((_entry, idx) => idx !== existingIndex)
           : [...current, value];
         setMultiSelectSelection(multiId, next);
         setMultiSelectQuery(multiId, "");
@@ -4228,26 +4306,13 @@ function handleInputEvents() {
         focusMultiInput(multiId);
         return;
       }
-      if (action === "multi-delete-option") {
+      if (action === "multi-remove-index") {
         const multiId = button.dataset.multiId || "";
-        const value = String(button.dataset.value || "").trim();
-        const kind = multiSelectMuscleKind(multiId);
-        if (!multiId || !value || !kind) return;
-        const removed = removeMuscleOptionFromLibrary(kind, value);
-        if (!removed) return;
-        removeOptionFromSelections(kind, value);
-        saveState();
-        ui.activeMultiSelect = multiId;
-        refreshMultiSelect(multiId);
-        focusMultiInput(multiId);
-        return;
-      }
-      if (action === "multi-remove") {
-        const multiId = button.dataset.multiId || "";
-        const value = String(button.dataset.value || "").trim();
-        if (!multiId || !value) return;
+        if (!multiId) return;
+        const index = parseInt(button.dataset.index || "-1", 10);
         const current = getMultiSelectState(multiId).selected;
-        const next = current.filter((entry) => entry !== value);
+        if (!Number.isFinite(index) || index < 0 || index >= current.length) return;
+        const next = current.filter((_entry, idx) => idx !== index);
         setMultiSelectSelection(multiId, next);
         ui.activeMultiSelect = multiId;
         refreshMultiSelect(multiId);
@@ -4603,7 +4668,15 @@ function updateLatestUpdateStamp() {
   const raw = document.lastModified;
   const parsed = raw ? new Date(raw) : null;
   const date = parsed && !Number.isNaN(parsed.getTime()) ? parsed : new Date();
-  el.textContent = `Updated ${date.toLocaleString()}`;
+  const stamp = date.toLocaleString(undefined, {
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+    hour: "2-digit",
+    minute: "2-digit",
+    hour12: false
+  });
+  el.textContent = `Updated ${stamp}`;
 }
 
 function getUrlHashParams(url) {

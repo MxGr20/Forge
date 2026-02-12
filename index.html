@@ -129,7 +129,7 @@
               <div id="exercisePrimaryMusclesSelect" class="tag-multi-root" data-multi-root="exercise-primary"></div>
             </label>
             <label>
-              Detailed Muscle Groups
+              Secondary Muscle Groups
               <div id="exerciseDetailedMusclesSelect" class="tag-multi-root" data-multi-root="exercise-detailed"></div>
             </label>
           </div>
@@ -201,7 +201,7 @@
               <div class="muted small">Muscle Source</div>
               <div class="segment-toggle" id="muscleDimensionToggle">
                 <button class="ghost small" data-action="muscle-dimension" data-dimension="primary">Primary</button>
-                <button class="ghost small" data-action="muscle-dimension" data-dimension="detailed">Detailed</button>
+                <button class="ghost small" data-action="muscle-dimension" data-dimension="detailed">Secondary</button>
               </div>
             </div>
           </div>
@@ -430,6 +430,10 @@
             <input type="text" id="historyEditWorkoutName" placeholder="Workout name">
           </label>
           <label>
+            Date & Time
+            <input type="datetime-local" id="historyEditWorkoutDate">
+          </label>
+          <label>
             Bodyweight (kg)
             <input type="number" step="0.1" id="historyEditWorkoutBodyweight" placeholder="Bodyweight">
           </label>
@@ -437,9 +441,14 @@
             Notes
             <input type="text" id="historyEditWorkoutNotes" placeholder="Workout notes">
           </label>
+          <div id="historyEditWorkoutItems" class="history-edit-workout-items"></div>
         </div>
 
         <div id="historyEditMeasurementFields" class="history-edit-section">
+          <label>
+            Date & Time
+            <input type="datetime-local" id="historyEditMeasurementDate">
+          </label>
           <label>
             Body Weight (kg)
             <input type="number" step="0.1" id="historyEditMeasureBodyWeight" placeholder="101.3">
@@ -498,7 +507,7 @@
           <div id="editExercisePrimaryMusclesSelect" class="tag-multi-root" data-multi-root="edit-exercise-primary"></div>
         </label>
         <label>
-          Detailed Muscle Groups
+          Secondary Muscle Groups
           <div id="editExerciseDetailedMusclesSelect" class="tag-multi-root" data-multi-root="edit-exercise-detailed"></div>
         </label>
         <div class="muted small tag-multi-help">Search existing tags. Press Enter to add a new tag.</div>
