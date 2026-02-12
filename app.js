@@ -1,5 +1,6 @@
 ﻿
 const STORAGE_KEY = "forge_data_v1";
+const STORAGE_VERSION = 2;
 const SUPABASE_URL = "https://ruuzraihxczeeeafkbve.supabase.co";
 const SUPABASE_ANON_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InJ1dXpyYWloeGN6ZWVlYWZrYnZlIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzA2MTU5MzAsImV4cCI6MjA4NjE5MTkzMH0.OVLMNwN0e940dSd6-aZqzaFFXCY3hcbgR_-dGvF1OwE";
 const SUPABASE_AUTH_URL_KEYS = [
@@ -59,7 +60,7 @@ const LEGACY_SEEDED_IDS = new Set([
 ]);
 
 const DEFAULT_STATE = {
-  version: 1,
+  version: STORAGE_VERSION,
   lastModified: 0,
   settings: {
     units: "kg",
@@ -79,7 +80,15 @@ const DEFAULT_STATE = {
     primary: [],
     detailed: []
   },
-  activeWorkoutId: null
+  activeWorkoutId: null,
+  statsData: {
+    exercisePerformance: [],
+    muscleGroupSets: {
+      primary: [],
+      detailed: []
+    },
+    bodyMeasurements: []
+  }
 };
 
 const PRIMARY_MUSCLE_OPTIONS = [
@@ -222,37 +231,242 @@ function uid() {
   return `id-${Math.random().toString(36).slice(2, 10)}`;
 }
 
+function normalizeRoutineCollection(routines) {
+  return Array.isArray(routines) ? routines.map(normalizeRoutine) : [];
+}
+
+function normalizeWorkoutCollection(workouts) {
+  return Array.isArray(workouts) ? workouts.map(normalizeWorkout) : [];
+}
+
+function normalizeBodyMeasurementCollection(entries) {
+  return Array.isArray(entries)
+    ? entries.map(normalizeBodyMeasurement).filter(Boolean)
+    : [];
+}
+
+function resolvePersistedExercises(source) {
+  return normalizeExercises(source?.exercises || source?.exerciseLibrary);
+}
+
+function resolvePersistedRoutines(source) {
+  return normalizeRoutineCollection(source?.routines || source?.workoutTemplates);
+}
+
+function resolvePersistedWorkouts(source) {
+  return normalizeWorkoutCollection(source?.workouts || source?.history?.workouts);
+}
+
+function resolvePersistedBodyMeasurements(source) {
+  return normalizeBodyMeasurementCollection(
+    source?.bodyMeasurements
+      || source?.history?.bodyMeasurements
+      || source?.statsData?.bodyMeasurements
+  );
+}
+
+function statsMuscleGroupsForExercise(exercise, dimension) {
+  const source = dimension === "detailed"
+    ? exercise?.detailedMuscleGroups
+    : exercise?.primaryMuscleGroups;
+  const groups = parseMuscleGroups(source);
+  return groups.length ? groups : ["Unassigned"];
+}
+
+function buildStatsDataSnapshot(exercises, workouts, bodyMeasurements) {
+  const safeExercises = Array.isArray(exercises) ? exercises : [];
+  const safeWorkouts = Array.isArray(workouts) ? workouts : [];
+  const safeMeasurements = normalizeBodyMeasurementCollection(bodyMeasurements)
+    .sort((a, b) => new Date(a.createdAt) - new Date(b.createdAt));
+  const exerciseById = new Map(safeExercises.map((exercise) => [exercise.id, exercise]));
+  const sortedWorkouts = safeWorkouts
+    .slice()
+    .sort((a, b) => new Date(a.createdAt) - new Date(b.createdAt));
+  const performanceByExercise = new Map();
+
+  const createSession = () => ({
+    heaviestWeight: 0,
+    oneRmBrzycki: 0,
+    bestSetVolume: 0,
+    bestSessionVolume: 0,
+    mostReps: 0,
+    totalWeight: 0,
+    totalReps: 0
+  });
+
+  sortedWorkouts.forEach((workout) => {
+    const perExercise = new Map();
+    (workout.items || []).forEach((item) => {
+      const exerciseId = item.exerciseId;
+      if (!exerciseId) return;
+      if (!perExercise.has(exerciseId)) perExercise.set(exerciseId, createSession());
+      const session = perExercise.get(exerciseId);
+      (item.sets || []).forEach((set) => {
+        if (set.type === "duration") {
+          const duration = Number.isFinite(set.durationSec) ? set.durationSec : 0;
+          if (duration <= 0) return;
+          session.totalReps += duration;
+          session.mostReps = Math.max(session.mostReps, duration);
+          return;
+        }
+        const reps = Number.isFinite(set.reps) ? set.reps : 0;
+        if (reps <= 0) return;
+        session.totalReps += reps;
+        session.mostReps = Math.max(session.mostReps, reps);
+        const weight = effectiveWeight(set, workout.bodyweight);
+        if (!Number.isFinite(weight) || weight <= 0) return;
+        const setVolume = weight * reps;
+        session.heaviestWeight = Math.max(session.heaviestWeight, weight);
+        session.bestSetVolume = Math.max(session.bestSetVolume, setVolume);
+        session.bestSessionVolume += setVolume;
+        session.oneRmBrzycki = Math.max(session.oneRmBrzycki, calcBrzyckiOneRm(weight, reps));
+        session.totalWeight += setVolume;
+      });
+    });
+
+    perExercise.forEach((session, exerciseId) => {
+      if (!performanceByExercise.has(exerciseId)) {
+        performanceByExercise.set(exerciseId, {
+          exerciseId,
+          exerciseName: exerciseById.get(exerciseId)?.name || "",
+          sessions: [],
+          totalWeight: 0,
+          totalReps: 0
+        });
+      }
+      const aggregate = performanceByExercise.get(exerciseId);
+      aggregate.totalWeight += session.totalWeight;
+      aggregate.totalReps += session.totalReps;
+      aggregate.sessions.push({
+        workoutId: workout.id || null,
+        date: workout.createdAt || new Date().toISOString(),
+        heaviestWeight: session.heaviestWeight,
+        oneRmBrzycki: session.oneRmBrzycki,
+        bestSetVolume: session.bestSetVolume,
+        bestSessionVolume: session.bestSessionVolume,
+        mostReps: session.mostReps
+      });
+    });
+  });
+
+  const exercisePerformance = Array.from(performanceByExercise.values())
+    .map((entry) => ({
+      ...entry,
+      sessions: entry.sessions.sort((a, b) => new Date(a.date) - new Date(b.date))
+    }))
+    .sort((a, b) => (a.exerciseName || "").localeCompare(b.exerciseName || ""));
+
+  const muscleGroupSets = {
+    primary: [],
+    detailed: []
+  };
+  const dimensions = ["primary", "detailed"];
+  dimensions.forEach((dimension) => {
+    sortedWorkouts.forEach((workout) => {
+      const counts = {};
+      (workout.items || []).forEach((item) => {
+        const setCount = Array.isArray(item.sets) ? item.sets.length : 0;
+        if (setCount <= 0) return;
+        const exercise = exerciseById.get(item.exerciseId);
+        const muscles = statsMuscleGroupsForExercise(exercise, dimension);
+        muscles.forEach((muscle) => {
+          counts[muscle] = (counts[muscle] || 0) + setCount;
+        });
+      });
+      const muscles = Object.entries(counts)
+        .map(([name, setCount]) => ({ name, setCount }))
+        .sort((a, b) => a.name.localeCompare(b.name));
+      if (!muscles.length) return;
+      muscleGroupSets[dimension].push({
+        workoutId: workout.id || null,
+        date: workout.createdAt || new Date().toISOString(),
+        muscles
+      });
+    });
+  });
+
+  return {
+    exercisePerformance,
+    muscleGroupSets,
+    bodyMeasurements: safeMeasurements
+  };
+}
+
+function createPersistedStateSnapshot(sourceState, options = {}) {
+  const source = sourceState && typeof sourceState === "object" ? sourceState : {};
+  const settings = mergeSettings(source.settings || {});
+  const exercises = resolvePersistedExercises(source);
+  const routines = resolvePersistedRoutines(source);
+  const workouts = resolvePersistedWorkouts(source);
+  const bodyMeasurements = resolvePersistedBodyMeasurements(source);
+  const muscleTagLibrary = normalizeMuscleTagLibrary(source.muscleTagLibrary);
+  const knownWorkoutIds = new Set(workouts.map((workout) => workout.id));
+  const activeWorkoutCandidate = typeof source.activeWorkoutId === "string"
+    ? source.activeWorkoutId
+    : null;
+  const activeWorkoutId = activeWorkoutCandidate && knownWorkoutIds.has(activeWorkoutCandidate)
+    ? activeWorkoutCandidate
+    : null;
+  const priorLastModified = Number.isFinite(source.lastModified) ? source.lastModified : 0;
+  const lastModified = options.touchLastModified ? Date.now() : priorLastModified;
+  const statsData = buildStatsDataSnapshot(exercises, workouts, bodyMeasurements);
+  return {
+    version: STORAGE_VERSION,
+    lastModified,
+    settings,
+    exerciseLibrary: exercises,
+    workoutTemplates: routines,
+    history: {
+      workouts,
+      bodyMeasurements
+    },
+    muscleTagLibrary,
+    activeWorkoutId,
+    statsData
+  };
+}
+
+function hydrateState(source) {
+  const snapshot = createPersistedStateSnapshot(source, { touchLastModified: false });
+  const exercises = resolvePersistedExercises(snapshot);
+  const routines = resolvePersistedRoutines(snapshot);
+  const workouts = resolvePersistedWorkouts(snapshot);
+  const bodyMeasurements = resolvePersistedBodyMeasurements(snapshot);
+  const fresh = JSON.parse(JSON.stringify(DEFAULT_STATE));
+  fresh.version = snapshot.version;
+  fresh.lastModified = snapshot.lastModified;
+  fresh.settings = snapshot.settings;
+  fresh.exercises = exercises;
+  fresh.routines = routines;
+  fresh.workouts = workouts;
+  fresh.bodyMeasurements = bodyMeasurements;
+  fresh.muscleTagLibrary = snapshot.muscleTagLibrary;
+  fresh.activeWorkoutId = snapshot.activeWorkoutId;
+  fresh.statsData = snapshot.statsData || buildStatsDataSnapshot(exercises, workouts, bodyMeasurements);
+  return fresh;
+}
+
 function loadState() {
   const raw = localStorage.getItem(STORAGE_KEY);
   if (!raw) {
-    const fresh = JSON.parse(JSON.stringify(DEFAULT_STATE));
-    fresh.exercises = normalizeExercises(fresh.exercises);
-    return fresh;
+    return hydrateState(DEFAULT_STATE);
   }
   try {
     const saved = JSON.parse(raw);
-    const merged = JSON.parse(JSON.stringify(DEFAULT_STATE));
-    merged.settings = mergeSettings(saved.settings || {});
-    merged.exercises = normalizeExercises(saved.exercises);
-    merged.routines = Array.isArray(saved.routines) ? saved.routines.map(normalizeRoutine) : [];
-    merged.workouts = Array.isArray(saved.workouts) ? saved.workouts.map(normalizeWorkout) : [];
-    merged.bodyMeasurements = Array.isArray(saved.bodyMeasurements)
-      ? saved.bodyMeasurements.map(normalizeBodyMeasurement).filter(Boolean)
-      : [];
-    merged.muscleTagLibrary = normalizeMuscleTagLibrary(saved.muscleTagLibrary);
-    merged.activeWorkoutId = saved.activeWorkoutId || null;
-    merged.lastModified = saved.lastModified || 0;
-    return merged;
+    return hydrateState(saved);
   } catch (err) {
-    const fallback = JSON.parse(JSON.stringify(DEFAULT_STATE));
-    fallback.exercises = normalizeExercises(fallback.exercises);
-    return fallback;
+    return hydrateState(DEFAULT_STATE);
   }
 }
 
 function saveState() {
-  state.lastModified = Date.now();
-  localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
+  const snapshot = createPersistedStateSnapshot(state, { touchLastModified: true });
+  state.version = snapshot.version;
+  state.lastModified = snapshot.lastModified;
+  state.muscleTagLibrary = snapshot.muscleTagLibrary;
+  state.activeWorkoutId = snapshot.activeWorkoutId;
+  state.statsData = snapshot.statsData;
+  localStorage.setItem(STORAGE_KEY, JSON.stringify(snapshot));
   scheduleCloudSync();
 }
 
@@ -515,7 +729,11 @@ function formatMeasurementValue(fieldKey, value) {
 }
 
 function getSortedBodyMeasurements() {
-  return state.bodyMeasurements
+  const statsMeasurements = getStatsDataSnapshot()?.bodyMeasurements;
+  const source = Array.isArray(state.bodyMeasurements) && state.bodyMeasurements.length
+    ? state.bodyMeasurements
+    : (Array.isArray(statsMeasurements) ? statsMeasurements : []);
+  return source
     .slice()
     .sort((a, b) => new Date(a.createdAt) - new Date(b.createdAt));
 }
@@ -1798,7 +2016,84 @@ function calcBrzyckiOneRm(weight, reps) {
   return weight * (36 / (37 - reps));
 }
 
+function getStatsDataSnapshot() {
+  const current = state?.statsData;
+  const hasStatsShape = current
+    && Array.isArray(current.exercisePerformance)
+    && current.muscleGroupSets
+    && typeof current.muscleGroupSets === "object"
+    && Array.isArray(current.muscleGroupSets.primary)
+    && Array.isArray(current.muscleGroupSets.detailed)
+    && Array.isArray(current.bodyMeasurements);
+  if (hasStatsShape) return current;
+  state.statsData = buildStatsDataSnapshot(state.exercises, state.workouts, state.bodyMeasurements);
+  return state.statsData;
+}
+
+function toFiniteNumber(value, fallback = 0) {
+  const parsed = typeof value === "string" ? parseFloat(value) : value;
+  return Number.isFinite(parsed) ? parsed : fallback;
+}
+
+function getStoredExercisePerformanceData(exerciseId) {
+  if (!exerciseId) return null;
+  const statsData = getStatsDataSnapshot();
+  const entries = Array.isArray(statsData.exercisePerformance) ? statsData.exercisePerformance : [];
+  const entry = entries.find((item) => item.exerciseId === exerciseId);
+  if (!entry) {
+    return { sessions: [], totalWeight: 0, totalReps: 0 };
+  }
+  const sessions = Array.isArray(entry.sessions)
+    ? entry.sessions
+      .map((session) => ({
+        date: session.date || new Date().toISOString(),
+        heaviestWeight: toFiniteNumber(session.heaviestWeight),
+        oneRmBrzycki: toFiniteNumber(session.oneRmBrzycki),
+        bestSetVolume: toFiniteNumber(session.bestSetVolume),
+        bestSessionVolume: toFiniteNumber(session.bestSessionVolume),
+        mostReps: toFiniteNumber(session.mostReps)
+      }))
+      .sort((a, b) => new Date(a.date) - new Date(b.date))
+    : [];
+  return {
+    sessions,
+    totalWeight: toFiniteNumber(entry.totalWeight),
+    totalReps: toFiniteNumber(entry.totalReps)
+  };
+}
+
+function getStoredMuscleGroupSetData(dimension) {
+  const key = dimension === "detailed" ? "detailed" : "primary";
+  const statsData = getStatsDataSnapshot();
+  const entries = Array.isArray(statsData?.muscleGroupSets?.[key])
+    ? statsData.muscleGroupSets[key]
+    : [];
+  return entries
+    .map((entry) => {
+      if (!entry || typeof entry !== "object") return null;
+      const date = entry.date || null;
+      const muscles = Array.isArray(entry.muscles)
+        ? entry.muscles
+          .map((muscle) => {
+            const name = String(muscle?.name || "").trim() || "Unassigned";
+            const setCount = toFiniteNumber(muscle?.setCount);
+            return setCount > 0 ? { name, setCount } : null;
+          })
+          .filter(Boolean)
+        : [];
+      if (!date || !muscles.length) return null;
+      return {
+        date,
+        muscles
+      };
+    })
+    .filter(Boolean)
+    .sort((a, b) => new Date(a.date) - new Date(b.date));
+}
+
 function getExercisePerformanceData(exerciseId) {
+  const stored = getStoredExercisePerformanceData(exerciseId);
+  if (stored) return stored;
   const sessions = [];
   let totalWeight = 0;
   let totalReps = 0;
@@ -2808,9 +3103,7 @@ function renderExerciseMuscleSelectors() {
 }
 
 function getExerciseMuscleGroups(exercise, dimension) {
-  const source = dimension === "detailed" ? exercise?.detailedMuscleGroups : exercise?.primaryMuscleGroups;
-  const groups = parseMuscleGroups(source);
-  return groups.length ? groups : ["Unassigned"];
+  return statsMuscleGroupsForExercise(exercise, dimension);
 }
 
 function getPeriodStart(date, grouping) {
@@ -2863,31 +3156,27 @@ function collectAvailableMuscles(dimension) {
 function computeMuscleVolumeSeries(grouping, monthsBack, dimension, selectedMuscles) {
   const cutoff = getMonthsBackCutoff(monthsBack);
   const buckets = new Map();
-  const workouts = state.workouts
-    .slice()
-    .sort((a, b) => new Date(a.createdAt) - new Date(b.createdAt));
+  const entries = getStoredMuscleGroupSetData(dimension);
 
-  workouts.forEach((workout) => {
-    const workoutDate = new Date(workout.createdAt);
-    if (workoutDate < cutoff) return;
-    workout.items.forEach((item) => {
-      const setCount = item.sets.length;
-      if (!setCount) return;
-      const exercise = getExercise(item.exerciseId);
-      const muscles = getExerciseMuscleGroups(exercise, dimension);
-      const periodStart = getPeriodStart(workoutDate, grouping);
-      const key = toDateKey(periodStart);
-      if (!buckets.has(key)) {
-        buckets.set(key, {
-          date: periodStart,
-          label: formatPeriodLabel(periodStart, grouping),
-          counts: {}
-        });
-      }
-      const bucket = buckets.get(key);
-      muscles.forEach((muscle) => {
-        bucket.counts[muscle] = (bucket.counts[muscle] || 0) + setCount;
+  entries.forEach((entry) => {
+    const workoutDate = new Date(entry.date);
+    if (Number.isNaN(workoutDate.getTime()) || workoutDate < cutoff) return;
+    const periodStart = getPeriodStart(workoutDate, grouping);
+    const key = toDateKey(periodStart);
+    if (!buckets.has(key)) {
+      buckets.set(key, {
+        date: periodStart,
+        label: formatPeriodLabel(periodStart, grouping),
+        counts: {}
       });
+    }
+    const bucket = buckets.get(key);
+    entry.muscles.forEach((muscleEntry) => {
+      if (!muscleEntry) return;
+      const muscle = String(muscleEntry.name || "").trim();
+      const setCount = toFiniteNumber(muscleEntry.setCount);
+      if (!muscle || setCount <= 0) return;
+      bucket.counts[muscle] = (bucket.counts[muscle] || 0) + setCount;
     });
   });
 
@@ -3407,7 +3696,8 @@ function exportCsv() {
 }
 
 function exportJson() {
-  const blob = new Blob([JSON.stringify(state, null, 2)], { type: "application/json" });
+  const snapshot = createPersistedStateSnapshot(state, { touchLastModified: false });
+  const blob = new Blob([JSON.stringify(snapshot, null, 2)], { type: "application/json" });
   downloadBlob(blob, "forge-backup.json");
 }
 
@@ -4191,18 +4481,7 @@ function importJson(file) {
 }
 
 function loadStateFromImport(parsed) {
-  const merged = JSON.parse(JSON.stringify(DEFAULT_STATE));
-  merged.settings = mergeSettings(parsed.settings || {});
-  merged.exercises = normalizeExercises(parsed.exercises);
-  merged.routines = Array.isArray(parsed.routines) ? parsed.routines.map(normalizeRoutine) : [];
-  merged.workouts = Array.isArray(parsed.workouts) ? parsed.workouts.map(normalizeWorkout) : [];
-  merged.bodyMeasurements = Array.isArray(parsed.bodyMeasurements)
-    ? parsed.bodyMeasurements.map(normalizeBodyMeasurement).filter(Boolean)
-    : [];
-  merged.muscleTagLibrary = normalizeMuscleTagLibrary(parsed.muscleTagLibrary);
-  merged.activeWorkoutId = parsed.activeWorkoutId || null;
-  merged.lastModified = parsed.lastModified || 0;
-  return merged;
+  return hydrateState(parsed);
 }
 
 function renderAll() {
@@ -4396,12 +4675,16 @@ async function loadFromCloud() {
     return;
   }
 
-  const remoteUpdated = Date.parse(data.updated_at || "") || 0;
+  const remoteState = hydrateState(data.data);
+  const remoteUpdatedFromRow = Date.parse(data.updated_at || "") || 0;
+  const remoteUpdated = Math.max(remoteUpdatedFromRow, remoteState.lastModified || 0);
   const localUpdated = state.lastModified || 0;
   if (remoteUpdated > localUpdated) {
-    state = loadStateFromImport(data.data);
+    state = remoteState;
     state.lastModified = remoteUpdated;
-    localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
+    const snapshot = createPersistedStateSnapshot(state, { touchLastModified: false });
+    snapshot.lastModified = remoteUpdated;
+    localStorage.setItem(STORAGE_KEY, JSON.stringify(snapshot));
     renderAll();
     toast("Loaded cloud data");
   } else {
@@ -4413,9 +4696,14 @@ async function syncToCloud() {
   if (!supabaseClient || !cloud.user) return;
   if (cloud.syncing) return;
   cloud.syncing = true;
+  const snapshot = createPersistedStateSnapshot(state, { touchLastModified: false });
+  state.version = snapshot.version;
+  state.statsData = snapshot.statsData;
+  state.muscleTagLibrary = snapshot.muscleTagLibrary;
+  state.activeWorkoutId = snapshot.activeWorkoutId;
   const payload = {
     user_id: cloud.user.id,
-    data: state,
+    data: snapshot,
     updated_at: new Date().toISOString()
   };
   const { error } = await supabaseClient
