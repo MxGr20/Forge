@@ -126,13 +126,14 @@
           <div class="grid-2">
             <label>
               Primary Muscle Groups
-              <div id="exercisePrimaryMusclesSelect"></div>
+              <div id="exercisePrimaryMusclesSelect" class="tag-multi-root" data-multi-root="exercise-primary"></div>
             </label>
             <label>
               Detailed Muscle Groups
-              <div id="exerciseDetailedMusclesSelect"></div>
+              <div id="exerciseDetailedMusclesSelect" class="tag-multi-root" data-multi-root="exercise-detailed"></div>
             </label>
           </div>
+          <div class="muted small tag-multi-help">Search existing tags. Press Enter to add a new tag.</div>
           <button class="primary" data-action="create-exercise">Add Exercise</button>
         </div>
 
@@ -206,7 +207,7 @@
           </div>
           <label>
             Muscles to Track
-            <div id="muscleFilterSelect"></div>
+            <div id="muscleFilterSelect" class="tag-multi-root" data-multi-root="stats-muscles"></div>
           </label>
           <div class="muted small">Select one or more muscles to compare sets over time.</div>
           <div class="chart-card">
@@ -494,12 +495,13 @@
         </label>
         <label>
           Primary Muscle Groups
-          <div id="editExercisePrimaryMusclesSelect"></div>
+          <div id="editExercisePrimaryMusclesSelect" class="tag-multi-root" data-multi-root="edit-exercise-primary"></div>
         </label>
         <label>
           Detailed Muscle Groups
-          <div id="editExerciseDetailedMusclesSelect"></div>
+          <div id="editExerciseDetailedMusclesSelect" class="tag-multi-root" data-multi-root="edit-exercise-detailed"></div>
         </label>
+        <div class="muted small tag-multi-help">Search existing tags. Press Enter to add a new tag.</div>
         <button class="primary wide" data-action="exercise-edit-save">Save Exercise</button>
         <button class="ghost wide" data-action="exercise-edit-close">Cancel</button>
       </div>

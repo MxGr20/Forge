@@ -91,51 +91,6 @@ const DEFAULT_STATE = {
   }
 };
 
-const PRIMARY_MUSCLE_OPTIONS = [
-  "Chest",
-  "Back",
-  "Shoulders",
-  "Biceps",
-  "Triceps",
-  "Forearms",
-  "Quads",
-  "Hamstrings",
-  "Glutes",
-  "Calves",
-  "Core",
-  "Lower Back",
-  "Traps",
-  "Neck",
-  "Full Body"
-];
-
-const DETAILED_MUSCLE_OPTIONS = [
-  "Upper Chest",
-  "Mid Chest",
-  "Lower Chest",
-  "Lats",
-  "Upper Back",
-  "Mid Back",
-  "Rear Delts",
-  "Lateral Delts",
-  "Front Delts",
-  "Long Head Triceps",
-  "Lateral Head Triceps",
-  "Brachialis",
-  "Brachioradialis",
-  "Abs",
-  "Obliques",
-  "Spinal Erectors",
-  "Hip Flexors",
-  "Adductors",
-  "Abductors",
-  "Glute Max",
-  "Glute Med",
-  "Quads",
-  "Hamstrings",
-  "Calves"
-];
-
 const ui = {
   view: "workouts",
   editRoutineId: null,
@@ -166,7 +121,8 @@ const ui = {
   editExercisePrimaryQuery: "",
   editExerciseDetailedQuery: "",
   activeMultiSelect: null,
-  muscleSelectionInitialized: false
+  muscleSelectionInitialized: false,
+  multiSelectValidation: {}
 };
 
 const BODY_MEASUREMENT_FIELDS = [
@@ -500,13 +456,9 @@ function normalizeMuscleTagValue(value) {
 
 function normalizeMuscleTagLibrary(library) {
   const safe = library && typeof library === "object" ? library : {};
-  const normalizeList = (kind, list) => {
-    const seed = kind === "detailed" ? DETAILED_MUSCLE_OPTIONS : PRIMARY_MUSCLE_OPTIONS;
-    const seedSet = new Set(seed.map((entry) => entry.toLowerCase()));
-    return uniqueSorted((Array.isArray(list) ? list : [])
-      .map(normalizeMuscleTagValue)
-      .filter((entry) => entry && !seedSet.has(entry.toLowerCase())));
-  };
+  const normalizeList = (_kind, list) => uniqueSorted((Array.isArray(list) ? list : [])
+    .map(normalizeMuscleTagValue)
+    .filter(Boolean));
   return {
     primary: normalizeList("primary", safe.primary),
     detailed: normalizeList("detailed", safe.detailed)
@@ -515,14 +467,12 @@ function normalizeMuscleTagLibrary(library) {
 
 function rememberMuscleTags(kind, tags) {
   if (kind !== "primary" && kind !== "detailed") return;
-  const seed = kind === "detailed" ? DETAILED_MUSCLE_OPTIONS : PRIMARY_MUSCLE_OPTIONS;
-  const seedSet = new Set(seed.map((entry) => entry.toLowerCase()));
   const current = state.muscleTagLibrary?.[kind] || [];
   const merged = uniqueSorted([
     ...current,
     ...tags
       .map(normalizeMuscleTagValue)
-      .filter((entry) => entry && !seedSet.has(entry.toLowerCase()))
+      .filter(Boolean)
   ]);
   if (!state.muscleTagLibrary) {
     state.muscleTagLibrary = { primary: [], detailed: [] };
@@ -1089,6 +1039,8 @@ function openExerciseEditSheet(exerciseId) {
   ui.editExerciseDetailedSelection = uniqueSorted(parseMuscleGroups(exercise.detailedMuscleGroups));
   ui.editExercisePrimaryQuery = "";
   ui.editExerciseDetailedQuery = "";
+  setMultiSelectValidation("edit-exercise-primary", false);
+  setMultiSelectValidation("edit-exercise-detailed", false);
   renderExerciseMuscleSelectors();
   const sheet = $("#exerciseEditSheet");
   if (sheet) sheet.classList.remove("hidden");
@@ -1100,8 +1052,31 @@ function closeExerciseEditSheet() {
   ui.editExerciseDetailedSelection = [];
   ui.editExercisePrimaryQuery = "";
   ui.editExerciseDetailedQuery = "";
+  setMultiSelectValidation("edit-exercise-primary", false);
+  setMultiSelectValidation("edit-exercise-detailed", false);
   const sheet = $("#exerciseEditSheet");
   if (sheet) sheet.classList.add("hidden");
+}
+
+function validateExerciseTagSelection(mode = "create") {
+  const primaryId = mode === "edit" ? "edit-exercise-primary" : "exercise-primary";
+  const detailedId = mode === "edit" ? "edit-exercise-detailed" : "exercise-detailed";
+  const primary = mode === "edit" ? ui.editExercisePrimarySelection : ui.exercisePrimarySelection;
+  const detailed = mode === "edit" ? ui.editExerciseDetailedSelection : ui.exerciseDetailedSelection;
+  const hasPrimary = Array.isArray(primary) && primary.length > 0;
+  const hasDetailed = Array.isArray(detailed) && detailed.length > 0;
+
+  setMultiSelectValidation(primaryId, !hasPrimary);
+  setMultiSelectValidation(detailedId, !hasDetailed);
+
+  if (hasPrimary && hasDetailed) return true;
+
+  const focusId = !hasPrimary ? primaryId : detailedId;
+  ui.activeMultiSelect = focusId;
+  renderExerciseMuscleSelectors();
+  focusMultiInput(focusId);
+  toast("Select at least one primary and one detailed muscle tag");
+  return false;
 }
 
 function saveExerciseEdit() {
@@ -1109,12 +1084,13 @@ function saveExerciseEdit() {
   const exercise = state.exercises.find((ex) => ex.id === ui.editExerciseId);
   if (!exercise) return;
   const name = $("#editExerciseName")?.value.trim() || "";
-  const primaryMuscleGroups = ui.editExercisePrimarySelection.join(", ");
-  const detailedMuscleGroups = ui.editExerciseDetailedSelection.join(", ");
   if (!name) {
     toast("Exercise needs a name");
     return;
   }
+  if (!validateExerciseTagSelection("edit")) return;
+  const primaryMuscleGroups = ui.editExercisePrimarySelection.join(", ");
+  const detailedMuscleGroups = ui.editExerciseDetailedSelection.join(", ");
   exercise.name = name;
   exercise.primaryMuscleGroups = primaryMuscleGroups;
   exercise.detailedMuscleGroups = detailedMuscleGroups;
@@ -1293,12 +1269,13 @@ function createExercise() {
   const name = $("#exerciseName")?.value.trim();
   const category = "";
   const type = "weight";
-  const primaryMuscleGroups = ui.exercisePrimarySelection.join(", ");
-  const detailedMuscleGroups = ui.exerciseDetailedSelection.join(", ");
   if (!name) {
     toast("Exercise needs a name");
     return;
   }
+  if (!validateExerciseTagSelection("create")) return;
+  const primaryMuscleGroups = ui.exercisePrimarySelection.join(", ");
+  const detailedMuscleGroups = ui.exerciseDetailedSelection.join(", ");
   const exercise = {
     id: uid(),
     name,
@@ -1315,6 +1292,8 @@ function createExercise() {
   ui.exerciseDetailedSelection = [];
   ui.exercisePrimaryQuery = "";
   ui.exerciseDetailedQuery = "";
+  setMultiSelectValidation("exercise-primary", false);
+  setMultiSelectValidation("exercise-detailed", false);
   if (ui.activeMultiSelect === "exercise-primary" || ui.activeMultiSelect === "exercise-detailed") {
     ui.activeMultiSelect = null;
   }
@@ -2836,13 +2815,12 @@ function uniqueSorted(values) {
 }
 
 function collectExerciseMuscleOptions(kind) {
-  const seed = kind === "detailed" ? DETAILED_MUSCLE_OPTIONS : PRIMARY_MUSCLE_OPTIONS;
   const remembered = state.muscleTagLibrary?.[kind] || [];
   const existing = state.exercises.flatMap((exercise) => {
     const raw = kind === "detailed" ? exercise.detailedMuscleGroups : exercise.primaryMuscleGroups;
     return parseMuscleGroups(raw);
   });
-  return uniqueSorted([...seed, ...remembered, ...existing]);
+  return uniqueSorted([...remembered, ...existing]);
 }
 
 function getMultiSelectState(multiId) {
@@ -2886,21 +2864,26 @@ function setMultiSelectSelection(multiId, values) {
   const normalized = uniqueSorted(values.map((entry) => String(entry || "").trim()));
   if (multiId === "exercise-primary") {
     ui.exercisePrimarySelection = normalized;
+    if (normalized.length) setMultiSelectValidation(multiId, false);
     return;
   }
   if (multiId === "exercise-detailed") {
     ui.exerciseDetailedSelection = normalized;
+    if (normalized.length) setMultiSelectValidation(multiId, false);
     return;
   }
   if (multiId === "edit-exercise-primary") {
     ui.editExercisePrimarySelection = normalized;
+    if (normalized.length) setMultiSelectValidation(multiId, false);
     return;
   }
   if (multiId === "edit-exercise-detailed") {
     ui.editExerciseDetailedSelection = normalized;
+    if (normalized.length) setMultiSelectValidation(multiId, false);
     return;
   }
   ui.selectedMuscles = normalized;
+  if (normalized.length) setMultiSelectValidation(multiId, false);
 }
 
 function multiSelectMuscleKind(multiId) {
@@ -2913,7 +2896,7 @@ function multiSelectMuscleKind(multiId) {
 }
 
 function canCreateMultiSelectOption(multiId) {
-  return !!multiSelectMuscleKind(multiId);
+  return isExerciseMuscleMultiSelect(multiId);
 }
 
 function isExerciseMuscleMultiSelect(multiId) {
@@ -2938,6 +2921,25 @@ function focusMultiInput(multiId) {
   input.focus();
   const end = input.value.length;
   input.setSelectionRange(end, end);
+}
+
+function setMultiSelectValidation(multiId, invalid) {
+  if (!ui.multiSelectValidation || typeof ui.multiSelectValidation !== "object") {
+    ui.multiSelectValidation = {};
+  }
+  if (invalid) {
+    ui.multiSelectValidation[multiId] = true;
+    return;
+  }
+  delete ui.multiSelectValidation[multiId];
+}
+
+function getFilteredMultiSelectOptions(multiId) {
+  const { query } = getMultiSelectState(multiId);
+  const safeQuery = String(query || "").trim().toLowerCase();
+  const options = getMultiSelectOptions(multiId);
+  if (!safeQuery) return options;
+  return options.filter((option) => option.toLowerCase().includes(safeQuery));
 }
 
 function isRemovableMuscleOption(kind, option) {
@@ -2968,19 +2970,22 @@ function renderMultiSelectControl({ rootId, multiId, selected, query, options, p
   const trimmedQuery = normalizeMuscleTagValue(safeQuery);
   const allowCreate = canCreateMultiSelectOption(multiId);
   const normalizedOptionSet = new Set(options.map((option) => option.toLowerCase()));
-  const requiresQuery = isExerciseMuscleMultiSelect(multiId);
   const filteredOptions = options.filter((option) => option.toLowerCase().includes(safeQuery.toLowerCase()));
-  const visibleOptions = requiresQuery && !trimmedQuery ? [] : filteredOptions;
   const dropdownOpen = ui.activeMultiSelect === multiId;
+  const selectedLowerSet = new Set(selected.map((entry) => entry.toLowerCase()));
+  const selectedFromFiltered = filteredOptions.filter((option) => selectedLowerSet.has(option.toLowerCase()));
+  const allFilteredSelected = filteredOptions.length > 0 && selectedFromFiltered.length === filteredOptions.length;
+  const invalid = !!ui.multiSelectValidation?.[multiId];
   const chips = selected.map((value) => `
     <span class="multi-chip">
       <span>${esc(value)}</span>
       <button type="button" class="multi-chip-remove" data-action="multi-remove" data-multi-id="${multiId}" data-value="${esc(value)}" aria-label="Remove ${esc(value)}">×</button>
     </span>
   `).join("");
-  const optionsHtml = visibleOptions.length
-    ? visibleOptions.map((option) => {
-      const selectedClass = selected.includes(option) ? " selected" : "";
+  const optionsHtml = filteredOptions.length
+    ? filteredOptions.map((option) => {
+      const isSelected = selectedLowerSet.has(option.toLowerCase());
+      const selectedClass = isSelected ? " selected" : "";
       const kind = multiSelectMuscleKind(multiId);
       const removable = isRemovableMuscleOption(kind, option);
       const removeButton = removable
@@ -2988,22 +2993,36 @@ function renderMultiSelectControl({ rootId, multiId, selected, query, options, p
         : "";
       return `
         <div class="multi-option-row${selectedClass}" data-action="multi-toggle" data-multi-id="${multiId}" data-value="${esc(option)}">
+          <span class="multi-option-check" aria-hidden="true">${isSelected ? "✓" : ""}</span>
           <span class="multi-option-label">${esc(option)}</span>
           ${removeButton}
         </div>
       `;
     }).join("")
-    : `<div class="multi-empty">${requiresQuery && !trimmedQuery ? "Type to search or add tags" : "No matches"}</div>`;
+    : `<div class="multi-empty">${trimmedQuery ? "No matching tags" : "No saved tags yet"}</div>`;
   const canCreate = allowCreate
     && trimmedQuery
     && !normalizedOptionSet.has(trimmedQuery.toLowerCase())
     && !selected.some((entry) => entry.toLowerCase() === trimmedQuery.toLowerCase());
   const createHtml = canCreate
-    ? `<button type="button" class="multi-option multi-option-create" data-action="multi-create" data-multi-id="${multiId}" data-value="${esc(trimmedQuery)}">Add "${esc(trimmedQuery)}"</button>`
+    ? `<button type="button" class="multi-option multi-option-create" data-action="multi-create" data-multi-id="${multiId}" data-value="${esc(trimmedQuery)}">Add tag "${esc(trimmedQuery)}"</button>`
+    : "";
+  const dropdownActions = `
+    <div class="multi-dropdown-actions">
+      <button type="button" class="ghost small multi-action-btn" data-action="multi-select-all" data-multi-id="${multiId}" ${filteredOptions.length ? "" : "disabled"}>
+        ${allFilteredSelected ? "Deselect All" : "Select All"}
+      </button>
+      <button type="button" class="ghost small multi-action-btn" data-action="multi-clear-selected" data-multi-id="${multiId}" ${selected.length ? "" : "disabled"}>
+        Clear Selected
+      </button>
+    </div>
+  `;
+  const clearSearchBtn = safeQuery
+    ? `<button type="button" class="multi-clear-btn" data-action="multi-clear-search" data-multi-id="${multiId}" aria-label="Clear search">×</button>`
     : "";
 
   root.innerHTML = `
-    <div class="multi-select${dropdownOpen ? " open" : ""}" data-multi-id="${multiId}">
+    <div class="multi-select${dropdownOpen ? " open" : ""}${invalid ? " invalid" : ""}" data-multi-id="${multiId}">
       <div class="multi-control" data-action="multi-focus" data-multi-id="${multiId}">
         ${chips}
         <input
@@ -3014,13 +3033,15 @@ function renderMultiSelectControl({ rootId, multiId, selected, query, options, p
           placeholder="${esc(placeholder)}"
           autocomplete="off"
         >
+        ${clearSearchBtn}
         <button type="button" class="multi-caret-btn" data-action="multi-open" data-multi-id="${multiId}" aria-label="Toggle options">
           <span class="multi-caret">▾</span>
         </button>
       </div>
       <div class="multi-dropdown${dropdownOpen ? "" : " hidden"}">
+        ${dropdownActions}
         ${createHtml}
-        ${optionsHtml}
+        <div class="multi-options">${optionsHtml}</div>
       </div>
     </div>
   `;
@@ -3074,7 +3095,7 @@ function renderExerciseMuscleSelectors() {
     selected: ui.exercisePrimarySelection,
     query: ui.exercisePrimaryQuery,
     options: collectExerciseMuscleOptions("primary"),
-    placeholder: "Search or add primary muscles"
+    placeholder: "Search primary tags"
   });
   renderMultiSelectControl({
     rootId: "exerciseDetailedMusclesSelect",
@@ -3082,7 +3103,7 @@ function renderExerciseMuscleSelectors() {
     selected: ui.exerciseDetailedSelection,
     query: ui.exerciseDetailedQuery,
     options: collectExerciseMuscleOptions("detailed"),
-    placeholder: "Search or add detailed muscles"
+    placeholder: "Search detailed tags"
   });
   renderMultiSelectControl({
     rootId: "editExercisePrimaryMusclesSelect",
@@ -3090,7 +3111,7 @@ function renderExerciseMuscleSelectors() {
     selected: ui.editExercisePrimarySelection,
     query: ui.editExercisePrimaryQuery,
     options: collectExerciseMuscleOptions("primary"),
-    placeholder: "Search or add primary muscles"
+    placeholder: "Search primary tags"
   });
   renderMultiSelectControl({
     rootId: "editExerciseDetailedMusclesSelect",
@@ -3098,7 +3119,7 @@ function renderExerciseMuscleSelectors() {
     selected: ui.editExerciseDetailedSelection,
     query: ui.editExerciseDetailedQuery,
     options: collectExerciseMuscleOptions("detailed"),
-    placeholder: "Search or add detailed muscles"
+    placeholder: "Search detailed tags"
   });
 }
 
@@ -3147,8 +3168,8 @@ function collectExerciseLibraryMuscles(dimension) {
 }
 
 function collectAvailableMuscles(dimension) {
-  const libraryTags = collectExerciseLibraryMuscles(dimension);
-  const muscles = new Set(libraryTags);
+  const kind = dimension === "detailed" ? "detailed" : "primary";
+  const muscles = new Set(collectExerciseMuscleOptions(kind));
   ui.selectedMuscles.forEach((group) => muscles.add(group));
   return Array.from(muscles).sort((a, b) => a.localeCompare(b));
 }
@@ -3358,7 +3379,7 @@ function renderMuscleGroupSection() {
     selected: ui.selectedMuscles,
     query: ui.muscleSearchQuery,
     options: availableMuscles,
-    placeholder: "Search or add muscles to track"
+    placeholder: "Search muscles to track"
   });
 
   const data = computeMuscleVolumeSeries(
@@ -4056,6 +4077,17 @@ function handleInputEvents() {
       setMultiSelectSelection(multiId, current.slice(0, -1));
       refreshMultiSelect(multiId);
       focusMultiInput(multiId);
+      return;
+    }
+
+    if (event.key === "Escape") {
+      event.preventDefault();
+      ui.activeMultiSelect = null;
+      if (multiId === "stats-muscles") {
+        renderMuscleGroupSection();
+      } else {
+        renderExerciseMuscleSelectors();
+      }
     }
   });
 
@@ -4116,6 +4148,49 @@ function handleInputEvents() {
           renderExerciseMuscleSelectors();
         }
         if (ui.activeMultiSelect) focusMultiInput(multiId);
+        return;
+      }
+      if (action === "multi-clear-search") {
+        const multiId = button.dataset.multiId || "";
+        if (!multiId) return;
+        setMultiSelectQuery(multiId, "");
+        ui.activeMultiSelect = multiId;
+        refreshMultiSelect(multiId);
+        focusMultiInput(multiId);
+        return;
+      }
+      if (action === "multi-clear-selected") {
+        const multiId = button.dataset.multiId || "";
+        if (!multiId) return;
+        setMultiSelectSelection(multiId, []);
+        ui.activeMultiSelect = multiId;
+        refreshMultiSelect(multiId);
+        focusMultiInput(multiId);
+        return;
+      }
+      if (action === "multi-select-all") {
+        const multiId = button.dataset.multiId || "";
+        if (!multiId) return;
+        const filteredOptions = getFilteredMultiSelectOptions(multiId);
+        if (!filteredOptions.length) return;
+        const current = getMultiSelectState(multiId).selected;
+        const currentLower = new Set(current.map((entry) => entry.toLowerCase()));
+        const allSelected = filteredOptions.every((option) => currentLower.has(option.toLowerCase()));
+        let next = [];
+        if (allSelected) {
+          const removeSet = new Set(filteredOptions.map((option) => option.toLowerCase()));
+          next = current.filter((entry) => !removeSet.has(entry.toLowerCase()));
+        } else {
+          next = current.slice();
+          filteredOptions.forEach((option) => {
+            if (currentLower.has(option.toLowerCase())) return;
+            next.push(option);
+          });
+        }
+        setMultiSelectSelection(multiId, next);
+        ui.activeMultiSelect = multiId;
+        refreshMultiSelect(multiId);
+        focusMultiInput(multiId);
         return;
       }
       if (action === "multi-toggle") {
