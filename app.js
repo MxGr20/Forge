@@ -498,6 +498,10 @@ function normalizeExercise(exercise) {
   };
 }
 
+function normalizeItemMetricMode(item) {
+  return item?.metricMode === "seconds" ? "seconds" : "reps";
+}
+
 function normalizeExercises(exercises) {
   return stripLegacyExercises(exercises)
     .map(normalizeExercise)
@@ -521,6 +525,7 @@ function mergeSettings(saved = {}) {
       ...routine,
       items: items.map((item) => ({
         ...item,
+        metricMode: normalizeItemMetricMode(item),
         sets: Array.isArray(item.sets)
           ? item.sets.map((set) => ({ ...set, completed: !!set.completed }))
           : []
@@ -534,6 +539,7 @@ function mergeSettings(saved = {}) {
       ...workout,
       items: items.map((item) => ({
         ...item,
+        metricMode: normalizeItemMetricMode(item),
         sets: Array.isArray(item.sets)
           ? item.sets.map((set) => ({ ...set, completed: !!set.completed }))
           : []
@@ -870,6 +876,7 @@ function startWorkout(routineId = null) {
         exerciseId: item.exerciseId,
         group: item.group || "",
         note: item.note || "",
+        metricMode: normalizeItemMetricMode(item),
         sets: (item.sets || []).map((set) => ({ ...set, id: uid(), completed: false }))
       }));
     }
@@ -1250,6 +1257,7 @@ function deleteRoutine(routineId) {
       exerciseId: exercise.id,
       group: "",
       note: "",
+      metricMode: "reps",
       sets: []
     });
     if (nameInput) nameInput.value = "";
@@ -1276,6 +1284,16 @@ function moveRoutineItem(routineId, itemId, delta) {
   if (newIndex < 0 || newIndex >= routine.items.length) return;
   const [moved] = routine.items.splice(index, 1);
   routine.items.splice(newIndex, 0, moved);
+  saveState();
+  renderRoutines();
+}
+
+function toggleRoutineItemMetricMode(routineId, itemId) {
+  const routine = state.routines.find((r) => r.id === routineId);
+  if (!routine) return;
+  const item = routine.items.find((entry) => entry.id === itemId);
+  if (!item) return;
+  item.metricMode = normalizeItemMetricMode(item) === "seconds" ? "reps" : "seconds";
   saveState();
   renderRoutines();
 }
@@ -1400,28 +1418,31 @@ function renderSession() {
   renderPhotoStrip(active.photoIds || []);
 }
 
-  function renderSetsHeader(type, owner) {
+  function renderSetsHeader(type, owner, metricMode = "reps") {
     const loadLabel = type === "assisted" ? "Assist" : type === "duration" ? "Time" : "kg";
-    const repsLabel = type === "duration" ? "Distance" : "Reps";
+    const repsLabel = type === "duration"
+      ? "Distance"
+      : (metricMode === "seconds" ? "Seconds" : "Reps");
     const doneLabel = owner === "workout" ? "<div>Done</div>" : "";
     return `<div class="set-row owner-${owner} header"><div>Set</div><div>${loadLabel}</div><div>${repsLabel}</div>${doneLabel}<div></div></div>`;
   }
 
-  function renderSetRow(set, index, itemId, owner) {
+  function renderSetRow(set, index, itemId, owner, metricMode = "reps") {
     const tag = normalizeSetTag(set.tag || "work");
     const baseAttrs = `data-owner="${owner}" data-item-id="${itemId}" data-set-id="${set.id}"`;
     let loadField = "";
     let repsField = "";
+    const metricPlaceholder = metricMode === "seconds" ? "Seconds" : "Reps";
 
   if (set.type === "duration") {
     loadField = `<input type="text" placeholder="mm:ss" value="${set.durationSec ? formatDuration(set.durationSec) : ""}" data-set-field="duration" ${baseAttrs}>`;
     repsField = `<input type="number" step="0.1" placeholder="km" value="${Number.isFinite(set.distance) ? set.distance : ""}" data-set-field="distance" ${baseAttrs}>`;
   } else if (set.type === "assisted") {
     loadField = `<input type="number" step="0.5" placeholder="Assist" value="${Number.isFinite(set.assist) ? set.assist : ""}" data-set-field="assist" ${baseAttrs}>`;
-    repsField = `<input type="number" step="1" placeholder="Reps" value="${Number.isFinite(set.reps) ? set.reps : ""}" data-set-field="reps" ${baseAttrs}>`;
+    repsField = `<input type="number" step="1" placeholder="${metricPlaceholder}" value="${Number.isFinite(set.reps) ? set.reps : ""}" data-set-field="reps" ${baseAttrs}>`;
   } else {
     loadField = `<input type="number" step="0.5" placeholder="kg" value="${Number.isFinite(set.weight) ? set.weight : ""}" data-set-field="weight" ${baseAttrs}>`;
-    repsField = `<input type="number" step="1" placeholder="Reps" value="${Number.isFinite(set.reps) ? set.reps : ""}" data-set-field="reps" ${baseAttrs}>`;
+    repsField = `<input type="number" step="1" placeholder="${metricPlaceholder}" value="${Number.isFinite(set.reps) ? set.reps : ""}" data-set-field="reps" ${baseAttrs}>`;
   }
 
     const doneCell = owner === "workout"
@@ -1446,16 +1467,22 @@ function renderExerciseCard(item, options) {
   const owner = options.owner;
   const exercise = getExercise(item.exerciseId);
   if (!exercise) return "";
+  const metricMode = normalizeItemMetricMode(item);
+  const showMeta = owner !== "routine";
   const meta = `${esc(exercise.category || "General")} · ${formatExerciseType(exercise.type)}`;
-  const setsHeader = renderSetsHeader(exercise.type, owner);
-  const setsRows = item.sets.map((set, index) => renderSetRow(set, index, item.id, owner)).join("");
+  const setsHeader = renderSetsHeader(exercise.type, owner, metricMode);
+  const setsRows = item.sets.map((set, index) => renderSetRow(set, index, item.id, owner, metricMode)).join("");
   const setsHtml = item.sets.length ? setsHeader + setsRows : `${setsHeader}<div class="muted small">No sets yet.</div>`;
   const tagHelp = item.sets.length
     ? "<div class=\"muted small set-tag-help\">Tap set number to cycle tag (W, F, D).</div>"
     : "";
+    const metricToggle = owner === "routine" && exercise.type !== "duration"
+      ? `<button class="ghost small" data-action="toggle-routine-item-metric" data-routine-id="${options.routineId}" data-item-id="${item.id}">${metricMode === "seconds" ? "Reps" : "Seconds"}</button>`
+      : "";
     const actions = owner === "routine"
       ? `
         <button class="ghost small" data-action="move-routine-item-up" data-routine-id="${options.routineId}" data-item-id="${item.id}">Up</button>
+        ${metricToggle}
         <button class="ghost small" data-action="move-routine-item-down" data-routine-id="${options.routineId}" data-item-id="${item.id}">Down</button>
         <button class="ghost small" data-action="replace-exercise" data-owner="${owner}" data-item-id="${item.id}">Replace</button>
         <button class="ghost small" data-action="remove-routine-item" data-routine-id="${options.routineId}" data-item-id="${item.id}">Remove</button>
@@ -1470,7 +1497,7 @@ function renderExerciseCard(item, options) {
         <div class="exercise-header">
           <div>
             <div class="exercise-title">${esc(exercise.name)}</div>
-            <div class="exercise-meta">${meta}</div>
+            ${showMeta ? `<div class="exercise-meta">${meta}</div>` : ""}
           </div>
           <div class="exercise-actions">
             ${actions}
@@ -4797,6 +4824,10 @@ function handleInputEvents() {
     }
     if (action === "move-routine-item-down") {
       moveRoutineItem(button.dataset.routineId, button.dataset.itemId, 1);
+      return;
+    }
+    if (action === "toggle-routine-item-metric") {
+      toggleRoutineItemMetricMode(button.dataset.routineId, button.dataset.itemId);
       return;
     }
     if (action === "share-routine") {
