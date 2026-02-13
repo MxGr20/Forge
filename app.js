@@ -3103,6 +3103,63 @@ function removeMuscleOptionFromExercises(kind, value) {
   return changed;
 }
 
+function replaceMuscleOptionValues(values, fromNormalized, toValue) {
+  const normalizedTarget = normalizeMuscleTagValue(toValue);
+  if (!fromNormalized || !normalizedTarget) {
+    return { next: Array.isArray(values) ? values.slice() : [], changed: false };
+  }
+  const input = Array.isArray(values) ? values : [];
+  const seen = new Set();
+  const next = [];
+  let changed = false;
+  input.forEach((entry) => {
+    const normalizedEntry = normalizeMuscleTagValue(entry);
+    if (!normalizedEntry) return;
+    const replaced = normalizedEntry.toLowerCase() === fromNormalized ? normalizedTarget : normalizedEntry;
+    if (replaced !== normalizedEntry) changed = true;
+    const lower = replaced.toLowerCase();
+    if (seen.has(lower)) {
+      changed = true;
+      return;
+    }
+    seen.add(lower);
+    next.push(replaced);
+  });
+  return { next, changed };
+}
+
+function renameMuscleOptionInLibrary(kind, fromValue, toValue) {
+  if (kind !== "primary" && kind !== "detailed") return false;
+  const fromNormalized = normalizeMuscleTagValue(fromValue).toLowerCase();
+  const nextValue = normalizeMuscleTagValue(toValue);
+  if (!fromNormalized || !nextValue) return false;
+  const current = state.muscleTagLibrary?.[kind] || [];
+  const result = replaceMuscleOptionValues(current, fromNormalized, nextValue);
+  if (!result.changed) return false;
+  if (!state.muscleTagLibrary) {
+    state.muscleTagLibrary = { primary: [], detailed: [] };
+  }
+  state.muscleTagLibrary[kind] = result.next.sort((a, b) => a.localeCompare(b));
+  return true;
+}
+
+function renameMuscleOptionInExercises(kind, fromValue, toValue) {
+  if (kind !== "primary" && kind !== "detailed") return false;
+  const fromNormalized = normalizeMuscleTagValue(fromValue).toLowerCase();
+  const nextValue = normalizeMuscleTagValue(toValue);
+  if (!fromNormalized || !nextValue) return false;
+  const field = kind === "detailed" ? "detailedMuscleGroups" : "primaryMuscleGroups";
+  let changed = false;
+  state.exercises.forEach((exercise) => {
+    const groups = parseMuscleGroups(exercise?.[field] || "");
+    const result = replaceMuscleOptionValues(groups, fromNormalized, nextValue);
+    if (!result.changed) return;
+    exercise[field] = result.next.join(", ");
+    changed = true;
+  });
+  return changed;
+}
+
 function removeOptionFromSelections(kind, value) {
   const normalized = normalizeMuscleTagValue(value).toLowerCase();
   if (!normalized) return;
@@ -3123,6 +3180,63 @@ function removeOptionFromSelections(kind, value) {
       ui.selectedMuscles = removeFrom(ui.selectedMuscles);
     }
   }
+}
+
+function renameOptionInSelections(kind, fromValue, toValue) {
+  const fromNormalized = normalizeMuscleTagValue(fromValue).toLowerCase();
+  const nextValue = normalizeMuscleTagValue(toValue);
+  if (!fromNormalized || !nextValue) return false;
+  const renameIn = (list) => {
+    const result = replaceMuscleOptionValues(list, fromNormalized, nextValue);
+    return {
+      changed: result.changed,
+      values: result.next.sort((a, b) => a.localeCompare(b))
+    };
+  };
+  let changed = false;
+
+  if (kind === "primary") {
+    const createSelection = renameIn(ui.exercisePrimarySelection);
+    if (createSelection.changed) {
+      ui.exercisePrimarySelection = createSelection.values;
+      changed = true;
+    }
+    const editSelection = renameIn(ui.editExercisePrimarySelection);
+    if (editSelection.changed) {
+      ui.editExercisePrimarySelection = editSelection.values;
+      changed = true;
+    }
+    if (ui.muscleDimension === "primary") {
+      const statsSelection = renameIn(ui.selectedMuscles);
+      if (statsSelection.changed) {
+        ui.selectedMuscles = statsSelection.values;
+        changed = true;
+      }
+    }
+    return changed;
+  }
+
+  if (kind === "detailed") {
+    const createSelection = renameIn(ui.exerciseDetailedSelection);
+    if (createSelection.changed) {
+      ui.exerciseDetailedSelection = createSelection.values;
+      changed = true;
+    }
+    const editSelection = renameIn(ui.editExerciseDetailedSelection);
+    if (editSelection.changed) {
+      ui.editExerciseDetailedSelection = editSelection.values;
+      changed = true;
+    }
+    if (ui.muscleDimension === "detailed") {
+      const statsSelection = renameIn(ui.selectedMuscles);
+      if (statsSelection.changed) {
+        ui.selectedMuscles = statsSelection.values;
+        changed = true;
+      }
+    }
+  }
+
+  return changed;
 }
 
 function renderMultiSelectControl({ rootId, multiId, selected, query, options, placeholder }) {
@@ -3148,17 +3262,27 @@ function renderMultiSelectControl({ rootId, multiId, selected, query, options, p
     ? filteredOptions.map((option) => {
       const isSelected = selectedLowerSet.has(option.toLowerCase());
       const selectedClass = isSelected ? " selected" : "";
-      const canDeleteOption = isExerciseMuscleMultiSelect(multiId);
-      const deleteOptionHtml = canDeleteOption
+      const canManageOption = isExerciseMuscleMultiSelect(multiId);
+      const optionActionsHtml = canManageOption
         ? `
-          <button
-            type="button"
-            class="multi-option-remove"
-            data-action="multi-delete-option"
-            data-multi-id="${multiId}"
-            data-value="${esc(option)}"
-            aria-label="Remove ${esc(option)} from tag library"
-          >×</button>
+          <div class="multi-option-tools">
+            <button
+              type="button"
+              class="multi-option-rename"
+              data-action="multi-rename-option"
+              data-multi-id="${multiId}"
+              data-value="${esc(option)}"
+              aria-label="Rename ${esc(option)} in tag library"
+            >Edit</button>
+            <button
+              type="button"
+              class="multi-option-remove"
+              data-action="multi-delete-option"
+              data-multi-id="${multiId}"
+              data-value="${esc(option)}"
+              aria-label="Remove ${esc(option)} from tag library"
+            >×</button>
+          </div>
         `
         : "";
       return `
@@ -3167,7 +3291,7 @@ function renderMultiSelectControl({ rootId, multiId, selected, query, options, p
             <span class="multi-option-check" aria-hidden="true">${isSelected ? "✓" : ""}</span>
             <span class="multi-option-label">${esc(option)}</span>
           </button>
-          ${deleteOptionHtml}
+          ${optionActionsHtml}
         </div>
       `;
     }).join("")
@@ -4338,6 +4462,52 @@ function handleInputEvents() {
         focusMultiInput(multiId);
         return;
       }
+      if (action === "multi-rename-option") {
+        const multiId = button.dataset.multiId || "";
+        const currentValue = normalizeMuscleTagValue(String(button.dataset.value || ""));
+        const kind = multiSelectMuscleKind(multiId);
+        if (!multiId || !currentValue || !kind || !isExerciseMuscleMultiSelect(multiId)) return;
+        const promptValue = prompt(`Rename tag "${currentValue}" to:`, currentValue);
+        if (promptValue == null) {
+          ui.activeMultiSelect = multiId;
+          refreshMultiSelect(multiId);
+          focusMultiInput(multiId);
+          return;
+        }
+        const nextValue = normalizeMuscleTagValue(promptValue);
+        if (!nextValue) {
+          toast("Tag name cannot be empty");
+          ui.activeMultiSelect = multiId;
+          refreshMultiSelect(multiId);
+          focusMultiInput(multiId);
+          return;
+        }
+        if (nextValue === currentValue) {
+          ui.activeMultiSelect = multiId;
+          refreshMultiSelect(multiId);
+          focusMultiInput(multiId);
+          return;
+        }
+        const renamedInLibrary = renameMuscleOptionInLibrary(kind, currentValue, nextValue);
+        const renamedInExercises = renameMuscleOptionInExercises(kind, currentValue, nextValue);
+        const renamedInSelections = renameOptionInSelections(kind, currentValue, nextValue);
+        const renamed = renamedInLibrary || renamedInExercises || renamedInSelections;
+        if (renamed) {
+          rememberMuscleTags(kind, [nextValue]);
+          saveState();
+          renderExercises();
+          renderRoutines();
+          renderLog();
+          renderHistory();
+          renderStats();
+          toast(`Tag renamed to "${nextValue}"`);
+        } else {
+          refreshMultiSelect(multiId);
+        }
+        ui.activeMultiSelect = multiId;
+        focusMultiInput(multiId);
+        return;
+      }
       if (action === "multi-delete-option") {
         const multiId = button.dataset.multiId || "";
         const value = String(button.dataset.value || "").trim();
@@ -4351,6 +4521,7 @@ function handleInputEvents() {
           renderExercises();
           renderRoutines();
           renderLog();
+          renderHistory();
           renderStats();
         } else {
           refreshMultiSelect(multiId);

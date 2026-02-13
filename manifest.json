@@ -1,5 +1,5 @@
 ﻿{
-  "name": "Forge Log",
+  "name": "Forge",
   "short_name": "Forge",
   "start_url": ".",
   "display": "standalone",
@@ -7,7 +7,7 @@
   "theme_color": "#0B1024",
   "icons": [
     {
-      "src": "icon.svg",
+      "src": "icon.svg?v=20260213",
       "sizes": "any",
       "type": "image/svg+xml",
       "purpose": "any maskable"
