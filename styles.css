@@ -152,9 +152,9 @@ body::after {
 }
 
 .app {
-  width: min(100%, 70rem);
-  margin: 0 auto;
-  padding: var(--space-4) var(--space-4) 8.5rem;
+  width: 100%;
+  margin: 0;
+  padding: 0;
   position: relative;
 }
 
@@ -262,10 +262,11 @@ body::after {
 
 .bottom-nav {
   position: fixed;
-  left: 50%;
+  left: var(--space-4);
+  right: var(--space-4);
   bottom: var(--space-4);
-  transform: translateX(-50%);
-  width: min(70rem, calc(100% - var(--space-8)));
+  transform: none;
+  width: auto;
   display: flex;
   justify-content: space-between;
   gap: var(--space-2);
@@ -277,8 +278,16 @@ body::after {
   box-shadow: var(--floating-shadow);
   z-index: 20;
 }
+
+#viewContainer {
+  min-height: 100dvh;
+}
+
 .view {
   display: none;
+  min-height: 100dvh;
+  padding: var(--space-5) var(--space-4) calc(9rem + env(safe-area-inset-bottom));
+  background: var(--color-surface-elevated);
   animation: fadeUp 0.4s ease;
 }
 
@@ -287,27 +296,32 @@ body::after {
 }
 
 .panel {
-  position: relative;
-  background: var(--card);
-  border: 1px solid var(--border);
-  border-radius: var(--radius);
-  padding: 18px;
-  margin-bottom: 16px;
-  box-shadow: var(--shadow);
-  overflow: visible;
+  background: transparent;
+  border: none;
+  border-radius: 0;
+  padding: 0;
+  margin: 0;
+  box-shadow: none;
 }
 
 .panel::before {
-  content: "";
-  position: absolute;
-  inset: 0 0 auto 0;
-  height: 3px;
-  background: linear-gradient(90deg, var(--accent), var(--accent-2));
-  opacity: 0.8;
+  content: none;
+}
+
+.view > .panel:not(.hidden) + .panel {
+  margin-top: var(--space-8);
+  padding-top: var(--space-6);
+  border-top: 1px solid var(--border);
+}
+
+.landing > * + * {
+  margin-top: var(--space-8);
+  padding-top: var(--space-6);
+  border-top: 1px solid var(--border);
 }
 
 #view-routines .panel.edit-template {
-  padding: 0 0 18px;
+  padding: 0;
   background: transparent;
   border: none;
   box-shadow: none;
@@ -386,7 +400,7 @@ body::after {
 
 #activeWorkoutPanel.panel,
 #view-routines .panel {
-  background: var(--color-surface-elevated);
+  background: transparent;
 }
 
 .row {
@@ -729,6 +743,9 @@ button:disabled {
 .exercise-card {
   margin-top: 12px;
   background: var(--color-surface-elevated);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 12px;
   border-color: rgb(var(--brand-rgb) / 0.12);
   box-shadow: var(--shadow);
 }
@@ -950,14 +967,18 @@ input[data-field="workout-name"] {
   font-weight: 600;
 }
 
-#activeWorkoutPanel .timer.card {
+#activeWorkoutPanel .timer {
   background: var(--color-surface-elevated);
   border-color: rgb(var(--brand-rgb) / 0.16);
 }
 
-#activeWorkoutPanel .add-exercise.card {
+#activeWorkoutPanel .add-exercise {
   background: var(--color-surface-elevated);
   border-color: rgb(var(--brand-rgb) / 0.16);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  padding: var(--space-3);
+  margin-top: var(--space-4);
 }
 
 .photo-strip {
@@ -1762,7 +1783,6 @@ h2 {
   margin: 0 0 0.5rem;
 }
 
-.panel,
 .card,
 .workout-card,
 .rest-inline,
@@ -1790,8 +1810,7 @@ h2 {
 }
 
 .chart-card,
-#activeWorkoutPanel .timer.card,
-#activeWorkoutPanel .add-exercise.card {
+#activeWorkoutPanel .timer {
   background: var(--color-chart-surface);
   border-color: rgb(var(--brand-rgb) / 0.2);
   box-shadow: var(--shadow);
@@ -1955,6 +1974,20 @@ button:hover {
   transform: none;
 }
 
+/* Flat inner list surfaces */
+.card,
+.workout-card,
+.exercise-card,
+.edit-template .exercise-card,
+.result-item,
+.history-exercise,
+.legend-item,
+.stat-card,
+.history-edit-workout-item {
+  border-radius: 0;
+  box-shadow: none;
+}
+
 @keyframes fadeUp {
   from {
     opacity: 0;
@@ -1967,19 +2000,19 @@ button:hover {
 }
 
 @media (min-width: 640px) {
-  .app {
+  .view {
     padding-inline: 1.25rem;
   }
 }
 
 @media (min-width: 768px) {
-  .app {
+  .view {
     padding-inline: 1.5rem;
   }
 }
 
 @media (min-width: 1024px) {
-  .app {
+  .view {
     padding-inline: 1.75rem;
   }
 }
@@ -2006,8 +2039,8 @@ button:hover {
 }
 
 @media (max-width: 600px) {
-  .app {
-    padding: var(--space-3) var(--space-3) 8rem;
+  .view {
+    padding: var(--space-4) var(--space-3) calc(8rem + env(safe-area-inset-bottom));
   }
 
   .theme-switch {
@@ -2039,7 +2072,8 @@ button:hover {
 
   .bottom-nav {
     bottom: 10px;
-    width: calc(100% - 20px);
+    left: 10px;
+    right: 10px;
   }
 
   .nav-btn {
