@@ -1676,9 +1676,7 @@ function renderSession() {
   updateFinishSheetActionLabel();
 
     const nameInput = $("[data-field='workout-name']");
-    const notesInput = $("[data-field='workout-notes']");
     if (nameInput) nameInput.value = active.name || "";
-    if (notesInput) notesInput.value = active.notes || "";
 
   const addSelect = $("#addExerciseSelect");
   if (addSelect) {
@@ -1766,8 +1764,6 @@ function renderExerciseCard(item, options) {
   const exercise = getExercise(item.exerciseId);
   if (!exercise) return "";
   const metricMode = normalizeItemMetricMode(item);
-  const showMeta = owner !== "routine";
-  const meta = `${esc(exercise.category || "General")} · ${formatExerciseType(exercise.type)}`;
   const setsHeader = renderSetsHeader(exercise.type, owner, metricMode);
   const setsRows = item.sets.map((set, index) => renderSetRow(set, index, item.id, owner, metricMode)).join("");
   const setsHtml = item.sets.length ? setsHeader + setsRows : `${setsHeader}<div class="muted small">No sets yet.</div>`;
@@ -1798,15 +1794,16 @@ function renderExerciseCard(item, options) {
         <div class="exercise-header">
           <div>
             <div class="exercise-title">${esc(exercise.name)}</div>
-            ${showMeta ? `<div class="exercise-meta">${meta}</div>` : ""}
           </div>
           <div class="exercise-actions">
             ${actions}
           </div>
         </div>
-        <div class="exercise-note-line">
-          <input type="text" data-field="item-note" data-owner="${owner}" data-item-id="${item.id}" placeholder="Note (optional)" value="${esc(item.note || "")}">
-        </div>
+        ${owner === "workout"
+          ? `<div class="exercise-note-line">
+              <input type="text" data-field="item-note" data-owner="${owner}" data-item-id="${item.id}" placeholder="Note (optional)" value="${esc(item.note || "")}">
+            </div>`
+          : ""}
         <div class="sets">${setsHtml}</div>
         ${tagHelp}
         <div class="add-set">
@@ -4657,16 +4654,11 @@ function handleInputEvents() {
       focusMultiInput(multiId);
       return;
     }
-      if (target.dataset.field === "workout-name") {
-        const workout = getActiveWorkout();
-        if (workout) workout.name = target.value;
-        saveState();
-      return;
-    }
-    if (target.dataset.field === "workout-notes") {
+    if (target.dataset.field === "workout-name") {
       const workout = getActiveWorkout();
-      if (workout) workout.notes = target.value;
+      if (workout) workout.name = target.value;
       saveState();
+      return;
     }
     if (target.dataset.field === "item-note") {
       updateItemField(target.dataset.owner || "workout", target.dataset.itemId, "note", target.value);
