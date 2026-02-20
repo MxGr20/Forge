@@ -1,6 +1,7 @@
 ﻿
 const STORAGE_KEY = "forge_data_v1";
 const STORAGE_VERSION = 2;
+const STATS_DATA_VERSION = 4;
 const SUPABASE_URL = "https://ruuzraihxczeeeafkbve.supabase.co";
 const SUPABASE_ANON_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InJ1dXpyYWloeGN6ZWVlYWZrYnZlIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzA2MTU5MzAsImV4cCI6MjA4NjE5MTkzMH0.OVLMNwN0e940dSd6-aZqzaFFXCY3hcbgR_-dGvF1OwE";
 const SUPABASE_AUTH_URL_KEYS = [
@@ -59,6 +60,41 @@ const LEGACY_SEEDED_IDS = new Set([
   "ex-kb-swing"
 ]);
 
+const EFFECTIVE_SET_WEIGHTS = Object.freeze({
+  primary: 1,
+  detailed: 0.3
+});
+
+const EFFECTIVE_SET_TAG_MULTIPLIERS = Object.freeze({
+  work: 1,
+  failure: 1.1,
+  drop: 0.6
+});
+
+const DURATION_SET_EQUIVALENT_SECONDS = 45;
+
+const CANONICAL_MUSCLE_GROUPS = Object.freeze([
+  "Abdominals",
+  "Abductors",
+  "Adductors",
+  "Biceps",
+  "Calves",
+  "Cardio",
+  "Chest",
+  "Forearms",
+  "Glutes",
+  "Hamstrings",
+  "Lats",
+  "Lower Back",
+  "Neck",
+  "Quadriceps",
+  "Shoulders",
+  "Traps",
+  "Triceps",
+  "Upper Back",
+  "Other"
+]);
+
 const DEFAULT_STATE = {
   version: STORAGE_VERSION,
   lastModified: 0,
@@ -82,10 +118,12 @@ const DEFAULT_STATE = {
   },
   activeWorkoutId: null,
   statsData: {
+    version: STATS_DATA_VERSION,
     exercisePerformance: [],
     muscleGroupSets: {
       primary: [],
-      detailed: []
+      detailed: [],
+      grouped: []
     },
     bodyMeasurements: []
   }
@@ -99,7 +137,7 @@ const ui = {
   statsMonthsBack: 6,
   muscleGrouping: "week",
   muscleMonthsBack: 1,
-  muscleDimension: "primary",
+  muscleDimension: "grouped",
   selectedMuscles: [],
   exerciseSearch: "",
   selectedRoutineId: null,
@@ -222,11 +260,141 @@ function resolvePersistedBodyMeasurements(source) {
 }
 
 function statsMuscleGroupsForExercise(exercise, dimension) {
-  const source = dimension === "detailed"
-    ? exercise?.detailedMuscleGroups
-    : exercise?.primaryMuscleGroups;
-  const groups = parseMuscleGroups(source);
+  if (dimension === "grouped") {
+    const groups = uniqueMuscleList([
+      ...parseMuscleGroups(exercise?.primaryMuscleGroups),
+      ...parseMuscleGroups(exercise?.detailedMuscleGroups)
+    ].map(mapMuscleToCanonicalGroup));
+    return groups.length ? groups : ["Other"];
+  }
+  const source = dimension === "detailed" ? exercise?.detailedMuscleGroups : exercise?.primaryMuscleGroups;
+  const groups = uniqueMuscleList(parseMuscleGroups(source));
   return groups.length ? groups : ["Unassigned"];
+}
+
+function normalizeMuscleMatchKey(value) {
+  return String(value || "")
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, " ")
+    .trim();
+}
+
+function mapMuscleToCanonicalGroup(muscle) {
+  const key = normalizeMuscleMatchKey(muscle);
+  if (!key) return "Other";
+  if (/\b(cardio|running?|jog|sprint|cycling?|bike|swim|elliptical|rower|rowing|stair|hiit|jump rope|jumprope)\b/.test(key)) return "Cardio";
+  if (/\b(abdominals?|abs?|obliques?|core|transverse)\b/.test(key)) return "Abdominals";
+  if (/\b(abductors?|hip abduction)\b/.test(key)) return "Abductors";
+  if (/\b(adductors?|groin|hip adduction)\b/.test(key)) return "Adductors";
+  if (/\b(biceps?|brachii)\b/.test(key)) return "Biceps";
+  if (/\b(calves?|calf|gastrocnemius|soleus)\b/.test(key)) return "Calves";
+  if (/\b(chest|pectorals?|pecs?)\b/.test(key)) return "Chest";
+  if (/\b(forearms?|brachioradialis|wrist)\b/.test(key)) return "Forearms";
+  if (/\b(glutes?|gluteus|butt)\b/.test(key)) return "Glutes";
+  if (/\b(hamstrings?|hammy|biceps femoris|semitendinosus|semimembranosus)\b/.test(key)) return "Hamstrings";
+  if (/\b(latissimus|lats?)\b/.test(key)) return "Lats";
+  if (/\b(lower back|lumbar|erectors?|spinae|quadratus lumborum|ql)\b/.test(key)) return "Lower Back";
+  if (/\b(neck|cervical|sternocleidomastoid|scalenes?)\b/.test(key)) return "Neck";
+  if (/\b(quadriceps?|quads?|vastus|rectus femoris)\b/.test(key)) return "Quadriceps";
+  if (/\b(shoulders?|deltoids?|delts?)\b/.test(key)) return "Shoulders";
+  if (/\b(traps?|trapezius)\b/.test(key)) return "Traps";
+  if (/\b(triceps?)\b/.test(key)) return "Triceps";
+  if (/\b(upper back|mid back|rhomboids?|teres|back)\b/.test(key)) return "Upper Back";
+  return "Other";
+}
+
+function uniqueMuscleList(groups) {
+  const seen = new Set();
+  const unique = [];
+  (Array.isArray(groups) ? groups : []).forEach((entry) => {
+    const name = String(entry || "").trim();
+    if (!name) return;
+    const normalized = name.toLowerCase();
+    if (seen.has(normalized)) return;
+    seen.add(normalized);
+    unique.push(name);
+  });
+  return unique;
+}
+
+function mergeMuscleShareEntries(entries) {
+  const merged = new Map();
+  (Array.isArray(entries) ? entries : []).forEach((entry) => {
+    const name = String(entry?.name || "").trim();
+    const share = Number.isFinite(entry?.share) ? entry.share : 0;
+    if (!name || share <= 0) return;
+    const normalized = name.toLowerCase();
+    if (!merged.has(normalized)) {
+      merged.set(normalized, { name, share: 0 });
+    }
+    merged.get(normalized).share += share;
+  });
+  return Array.from(merged.values())
+    .map((entry) => ({
+      name: entry.name,
+      share: Number(entry.share.toFixed(6))
+    }))
+    .sort((a, b) => a.name.localeCompare(b.name));
+}
+
+function buildExerciseMuscleShares(exercise) {
+  const primary = uniqueMuscleList(parseMuscleGroups(exercise?.primaryMuscleGroups));
+  const detailed = uniqueMuscleList(parseMuscleGroups(exercise?.detailedMuscleGroups));
+  const weightedEntries = [];
+
+  primary.forEach((muscle) => {
+    weightedEntries.push({
+      dimension: "primary",
+      name: muscle,
+      rawWeight: EFFECTIVE_SET_WEIGHTS.primary
+    });
+  });
+  detailed.forEach((muscle) => {
+    weightedEntries.push({
+      dimension: "detailed",
+      name: muscle,
+      rawWeight: EFFECTIVE_SET_WEIGHTS.detailed
+    });
+  });
+
+  if (!weightedEntries.length) {
+    return {
+      primary: [{ name: "Unassigned", share: 1 }],
+      detailed: [{ name: "Unassigned", share: 1 }],
+      grouped: [{ name: "Other", share: 1 }]
+    };
+  }
+
+  const totalRawWeight = weightedEntries.reduce((sum, entry) => sum + entry.rawWeight, 0) || 1;
+  const primaryShares = mergeMuscleShareEntries(weightedEntries
+    .filter((entry) => entry.dimension === "primary")
+    .map((entry) => ({ name: entry.name, share: entry.rawWeight / totalRawWeight })));
+  const detailedShares = mergeMuscleShareEntries(weightedEntries
+    .filter((entry) => entry.dimension === "detailed")
+    .map((entry) => ({ name: entry.name, share: entry.rawWeight / totalRawWeight })));
+  const groupedShares = mergeMuscleShareEntries(weightedEntries
+    .map((entry) => ({ name: mapMuscleToCanonicalGroup(entry.name), share: entry.rawWeight / totalRawWeight })));
+
+  return {
+    primary: primaryShares,
+    detailed: detailedShares,
+    grouped: groupedShares.length ? groupedShares : [{ name: "Other", share: 1 }]
+  };
+}
+
+function resolveEffectiveSetMultiplier(set) {
+  const tag = normalizeSetTag(set?.tag || "work");
+  const configured = EFFECTIVE_SET_TAG_MULTIPLIERS[tag];
+  return Number.isFinite(configured) && configured > 0
+    ? configured
+    : EFFECTIVE_SET_TAG_MULTIPLIERS.work;
+}
+
+function resolveSetEquivalentCount(set) {
+  if (set?.type !== "duration") return 1;
+  const duration = toFiniteNumber(set?.durationSec);
+  if (duration <= 0) return 0;
+  return duration / DURATION_SET_EQUIVALENT_SECONDS;
 }
 
 function buildStatsDataSnapshot(exercises, workouts, bodyMeasurements) {
@@ -314,23 +482,45 @@ function buildStatsDataSnapshot(exercises, workouts, bodyMeasurements) {
 
   const muscleGroupSets = {
     primary: [],
-    detailed: []
+    detailed: [],
+    grouped: []
   };
-  const dimensions = ["primary", "detailed"];
-  dimensions.forEach((dimension) => {
-    sortedWorkouts.forEach((workout) => {
-      const counts = {};
-      (workout.items || []).forEach((item) => {
-        const setCount = Array.isArray(item.sets) ? item.sets.length : 0;
-        if (setCount <= 0) return;
-        const exercise = exerciseById.get(item.exerciseId);
-        const muscles = statsMuscleGroupsForExercise(exercise, dimension);
-        muscles.forEach((muscle) => {
-          counts[muscle] = (counts[muscle] || 0) + setCount;
+
+  const dimensions = ["primary", "detailed", "grouped"];
+  sortedWorkouts.forEach((workout) => {
+    const countsByDimension = {
+      primary: {},
+      detailed: {},
+      grouped: {}
+    };
+
+    (workout.items || []).forEach((item) => {
+      const sets = Array.isArray(item.sets) ? item.sets : [];
+      if (!sets.length) return;
+      const exercise = exerciseById.get(item.exerciseId);
+      const muscleShares = buildExerciseMuscleShares(exercise);
+      sets.forEach((set) => {
+        const multiplier = resolveEffectiveSetMultiplier(set);
+        const setEquivalent = resolveSetEquivalentCount(set);
+        if (setEquivalent <= 0) return;
+        dimensions.forEach((dimension) => {
+          const entries = muscleShares[dimension] || [];
+          entries.forEach((entry) => {
+            const muscle = String(entry.name || "").trim();
+            const share = Number.isFinite(entry.share) ? entry.share : 0;
+            if (!muscle || share <= 0) return;
+            countsByDimension[dimension][muscle] = (countsByDimension[dimension][muscle] || 0) + (multiplier * setEquivalent * share);
+          });
         });
       });
-      const muscles = Object.entries(counts)
-        .map(([name, setCount]) => ({ name, setCount }))
+    });
+
+    dimensions.forEach((dimension) => {
+      const muscles = Object.entries(countsByDimension[dimension])
+        .map(([name, setCount]) => ({
+          name,
+          setCount: Number(setCount.toFixed(4))
+        }))
         .sort((a, b) => a.name.localeCompare(b.name));
       if (!muscles.length) return;
       muscleGroupSets[dimension].push({
@@ -342,6 +532,7 @@ function buildStatsDataSnapshot(exercises, workouts, bodyMeasurements) {
   });
 
   return {
+    version: STATS_DATA_VERSION,
     exercisePerformance,
     muscleGroupSets,
     bodyMeasurements: safeMeasurements
@@ -398,7 +589,9 @@ function hydrateState(source) {
   fresh.bodyMeasurements = bodyMeasurements;
   fresh.muscleTagLibrary = snapshot.muscleTagLibrary;
   fresh.activeWorkoutId = snapshot.activeWorkoutId;
-  fresh.statsData = snapshot.statsData || buildStatsDataSnapshot(exercises, workouts, bodyMeasurements);
+  fresh.statsData = snapshot.statsData?.version === STATS_DATA_VERSION
+    ? snapshot.statsData
+    : buildStatsDataSnapshot(exercises, workouts, bodyMeasurements);
   return fresh;
 }
 
@@ -2242,11 +2435,13 @@ function calcBrzyckiOneRm(weight, reps) {
 function getStatsDataSnapshot() {
   const current = state?.statsData;
   const hasStatsShape = current
+    && current.version === STATS_DATA_VERSION
     && Array.isArray(current.exercisePerformance)
     && current.muscleGroupSets
     && typeof current.muscleGroupSets === "object"
     && Array.isArray(current.muscleGroupSets.primary)
     && Array.isArray(current.muscleGroupSets.detailed)
+    && Array.isArray(current.muscleGroupSets.grouped)
     && Array.isArray(current.bodyMeasurements);
   if (hasStatsShape) return current;
   state.statsData = buildStatsDataSnapshot(state.exercises, state.workouts, state.bodyMeasurements);
@@ -2285,8 +2480,14 @@ function getStoredExercisePerformanceData(exerciseId) {
   };
 }
 
+function resolveMuscleDimensionKey(dimension) {
+  if (dimension === "detailed") return "detailed";
+  if (dimension === "grouped") return "grouped";
+  return "primary";
+}
+
 function getStoredMuscleGroupSetData(dimension) {
-  const key = dimension === "detailed" ? "detailed" : "primary";
+  const key = resolveMuscleDimensionKey(dimension);
   const statsData = getStatsDataSnapshot();
   const entries = Array.isArray(statsData?.muscleGroupSets?.[key])
     ? statsData.muscleGroupSets[key]
@@ -2298,7 +2499,8 @@ function getStoredMuscleGroupSetData(dimension) {
       const muscles = Array.isArray(entry.muscles)
         ? entry.muscles
           .map((muscle) => {
-            const name = String(muscle?.name || "").trim() || "Unassigned";
+            const fallbackName = key === "grouped" ? "Other" : "Unassigned";
+            const name = String(muscle?.name || "").trim() || fallbackName;
             const setCount = toFiniteNumber(muscle?.setCount);
             return setCount > 0 ? { name, setCount } : null;
           })
@@ -2994,7 +3196,7 @@ function renderMultiLineChart(container, labels, series, options = {}) {
   const showYLabels = options.showYLabels !== false;
   const showGrid = options.showGrid !== false;
   const yLabel = String(options.yLabel || "");
-  const left = Number.isFinite(options.left) ? options.left : (showYLabels ? 38 : 14);
+  const left = Number.isFinite(options.left) ? options.left : (showYLabels ? 44 : 14);
   const right = Number.isFinite(options.right) ? options.right : 10;
   const top = Number.isFinite(options.top) ? options.top : 12;
   const bottom = Number.isFinite(options.bottom) ? options.bottom : 22;
@@ -3037,7 +3239,7 @@ function renderMultiLineChart(container, labels, series, options = {}) {
   }).join("");
 
   container.innerHTML = `
-    <svg viewBox="0 0 ${width} ${height}" width="100%" height="${height}" preserveAspectRatio="none">
+    <svg viewBox="0 0 ${width} ${height}" width="100%" height="${height}" preserveAspectRatio="xMinYMid meet">
       ${yLabel ? `<text x="${left}" y="${Math.max(10, top - 3)}" fill="${axisColor}" font-size="10">${esc(yLabel)}</text>` : ""}
       ${gridLines}
       ${lines}
@@ -3134,7 +3336,9 @@ function multiSelectMuscleKind(multiId) {
   if (multiId === "exercise-primary" || multiId === "edit-exercise-primary") return "primary";
   if (multiId === "exercise-detailed" || multiId === "edit-exercise-detailed") return "detailed";
   if (multiId === "stats-muscles") {
-    return ui.muscleDimension === "detailed" ? "detailed" : "primary";
+    if (ui.muscleDimension === "primary") return "primary";
+    if (ui.muscleDimension === "detailed") return "detailed";
+    return null;
   }
   return null;
 }
@@ -3538,6 +3742,23 @@ function formatPeriodLabel(periodStart, grouping) {
   return `Wk ${periodStart.toLocaleDateString(undefined, { month: "short", day: "numeric" })}`;
 }
 
+function getNextPeriodStart(periodStart, grouping) {
+  const next = new Date(periodStart);
+  if (grouping === "year") {
+    next.setFullYear(next.getFullYear() + 1, 0, 1);
+    next.setHours(0, 0, 0, 0);
+    return next;
+  }
+  if (grouping === "month") {
+    next.setMonth(next.getMonth() + 1, 1);
+    next.setHours(0, 0, 0, 0);
+    return next;
+  }
+  next.setDate(next.getDate() + 7);
+  next.setHours(0, 0, 0, 0);
+  return next;
+}
+
 function toDateKey(date) {
   const year = date.getFullYear();
   const month = String(date.getMonth() + 1).padStart(2, "0");
@@ -3546,6 +3767,20 @@ function toDateKey(date) {
 }
 
 function collectExerciseLibraryMuscles(dimension) {
+  if (dimension === "grouped") {
+    const groups = new Set();
+    state.exercises.forEach((exercise) => {
+      const allTags = [
+        ...parseMuscleGroups(exercise?.primaryMuscleGroups),
+        ...parseMuscleGroups(exercise?.detailedMuscleGroups)
+      ];
+      allTags.forEach((tag) => groups.add(mapMuscleToCanonicalGroup(tag)));
+    });
+    if (!groups.size) groups.add("Other");
+    const ordered = CANONICAL_MUSCLE_GROUPS.filter((group) => groups.has(group));
+    const extras = Array.from(groups).filter((group) => !CANONICAL_MUSCLE_GROUPS.includes(group));
+    return [...ordered, ...extras];
+  }
   const muscles = new Set();
   state.exercises.forEach((exercise) => {
     const source = dimension === "detailed" ? exercise?.detailedMuscleGroups : exercise?.primaryMuscleGroups;
@@ -3555,9 +3790,27 @@ function collectExerciseLibraryMuscles(dimension) {
 }
 
 function collectAvailableMuscles(dimension) {
-  const kind = dimension === "detailed" ? "detailed" : "primary";
-  const muscles = new Set(collectExerciseMuscleOptions(kind));
+  const muscles = new Set();
+  if (dimension === "grouped") {
+    collectExerciseLibraryMuscles("grouped").forEach((group) => muscles.add(group));
+    getStoredMuscleGroupSetData("grouped").forEach((entry) => {
+      (entry.muscles || []).forEach((muscleEntry) => {
+        const name = String(muscleEntry?.name || "").trim();
+        if (name) muscles.add(name);
+      });
+    });
+  } else {
+    const kind = dimension === "detailed" ? "detailed" : "primary";
+    collectExerciseMuscleOptions(kind).forEach((group) => muscles.add(group));
+  }
   ui.selectedMuscles.forEach((group) => muscles.add(group));
+  if (dimension === "grouped") {
+    const ordered = CANONICAL_MUSCLE_GROUPS.filter((group) => muscles.has(group));
+    const extras = Array.from(muscles)
+      .filter((group) => !CANONICAL_MUSCLE_GROUPS.includes(group))
+      .sort((a, b) => a.localeCompare(b));
+    return [...ordered, ...extras];
+  }
   return Array.from(muscles).sort((a, b) => a.localeCompare(b));
 }
 
@@ -3565,6 +3818,17 @@ function computeMuscleVolumeSeries(grouping, monthsBack, dimension, selectedMusc
   const cutoff = getMonthsBackCutoff(monthsBack);
   const buckets = new Map();
   const entries = getStoredMuscleGroupSetData(dimension);
+  const startPeriod = getPeriodStart(cutoff, grouping);
+  const endPeriod = getPeriodStart(new Date(), grouping);
+
+  for (let cursor = new Date(startPeriod); cursor <= endPeriod; cursor = getNextPeriodStart(cursor, grouping)) {
+    const key = toDateKey(cursor);
+    buckets.set(key, {
+      date: new Date(cursor),
+      label: formatPeriodLabel(cursor, grouping),
+      counts: {}
+    });
+  }
 
   entries.forEach((entry) => {
     const workoutDate = new Date(entry.date);
@@ -3606,9 +3870,13 @@ function computeMuscleVolumeSeries(grouping, monthsBack, dimension, selectedMusc
 }
 
 function formatSetCount(value, withUnit = true) {
-  const safe = Number.isFinite(value) ? Math.round(value) : 0;
-  const text = safe.toLocaleString();
-  return withUnit ? `${text} sets` : text;
+  const safe = Number.isFinite(value) ? value : 0;
+  const rounded = Number(safe.toFixed(1));
+  const text = rounded.toLocaleString(undefined, {
+    minimumFractionDigits: 0,
+    maximumFractionDigits: 1
+  });
+  return withUnit ? `${text} effective sets` : text;
 }
 
 function renderAdaptiveMuscleVolumeChart(container, labels, series, options = {}) {
@@ -3649,9 +3917,9 @@ function renderAdaptiveMuscleVolumeChart(container, labels, series, options = {}
   if (!selectedCount) {
     container.innerHTML = `
       <div class="performance-empty">
-        <div class="performance-empty-kicker">Muscle Sets</div>
-        <div class="performance-empty-value">0 sets</div>
-        <div class="muted small">Select one or more muscles to track sets.</div>
+        <div class="performance-empty-kicker">Effective Sets</div>
+        <div class="performance-empty-value">0</div>
+        <div class="muted small">Select one or more muscles to track volume.</div>
       </div>
     `;
     return {
@@ -3672,10 +3940,10 @@ function renderAdaptiveMuscleVolumeChart(container, labels, series, options = {}
   if (!hasSeries || nonZeroCount === 0) {
     container.innerHTML = `
       <div class="performance-empty">
-        <div class="performance-empty-kicker">Muscle Sets</div>
-        <div class="performance-empty-value">0 sets</div>
-        <div class="muted small">No logged muscle sets in this range.</div>
-        <div class="muted small">Log workouts to see muscle set trends.</div>
+        <div class="performance-empty-kicker">Effective Sets</div>
+        <div class="performance-empty-value">0</div>
+        <div class="muted small">No logged effective sets in this range.</div>
+        <div class="muted small">Log workouts to see muscle-volume trends.</div>
       </div>
     `;
     return {
@@ -3695,25 +3963,27 @@ function renderAdaptiveMuscleVolumeChart(container, labels, series, options = {}
 
   if (stage === "b") {
     renderMultiLineChart(container, labels, series, {
-      integerOnly: true,
-      tickCount: 4,
-      height: 132,
-      showYLabels: false,
-      axisSlots: 2,
+      integerOnly: false,
+      tickFormatter: (value) => formatSetCount(value, false),
+      tickCount: 5,
+      height: 170,
+      showYLabels: true,
+      axisSlots: 3,
       lineWidth: 2.3,
       dotRadius: 2.4,
-      yLabel: "sets"
+      yLabel: "effective sets"
     });
   } else {
     renderMultiLineChart(container, labels, series, {
-      integerOnly: true,
+      integerOnly: false,
+      tickFormatter: (value) => formatSetCount(value, false),
       tickCount: 6,
       height: 186,
       showYLabels: true,
       axisSlots: 4,
       lineWidth: 2.2,
       dotRadius: 2.3,
-      yLabel: "sets"
+      yLabel: "effective sets"
     });
   }
 
@@ -3739,7 +4009,7 @@ function renderMuscleGroupSection() {
   ui.muscleMonthsBack = populateMonthRangeSelect(monthsSelect, ui.muscleMonthsBack, 1);
   const chartTitle = $("#muscleChartTitle");
   if (chartTitle) {
-    chartTitle.textContent = `Sets by Muscle Group · Last ${ui.muscleMonthsBack} month${ui.muscleMonthsBack === 1 ? "" : "s"}`;
+    chartTitle.textContent = `Effective Sets by Muscle Group · Last ${ui.muscleMonthsBack} month${ui.muscleMonthsBack === 1 ? "" : "s"}`;
   }
   const toggle = $("#muscleDimensionToggle");
   if (toggle) {
@@ -3782,15 +4052,15 @@ function renderMuscleGroupSection() {
   const summaryEl = $("#muscleChartSummary");
   if (summaryEl) {
     if (chartSnapshot.status === "selection-required") {
-      summaryEl.textContent = "No muscles selected. Choose one or more muscles to track sets.";
+      summaryEl.textContent = "No muscles selected. Choose one or more muscles to track effective sets.";
     } else if (chartSnapshot.status === "no-data") {
-      summaryEl.textContent = "No muscle sets logged for the selected range and muscle filters.";
+      summaryEl.textContent = "No effective sets logged for the selected range and muscle filters.";
     } else if (chartSnapshot.stage === "a") {
-      summaryEl.textContent = `Latest logged sets: ${formatSetCount(chartSnapshot.latestSets)}. Log more periods to unlock trends.`;
+      summaryEl.textContent = `Latest logged volume: ${formatSetCount(chartSnapshot.latestSets)}. Log more periods to unlock trends.`;
     } else if (chartSnapshot.stage === "b") {
-      summaryEl.textContent = `Early trend across ${chartSnapshot.nonZeroCount} logged periods. Peak sets ${formatSetCount(chartSnapshot.bestSets)}${chartSnapshot.bestLabel ? ` (${chartSnapshot.bestLabel})` : ""}.`;
+      summaryEl.textContent = `Early trend across ${chartSnapshot.nonZeroCount} logged periods. Peak volume ${formatSetCount(chartSnapshot.bestSets)}${chartSnapshot.bestLabel ? ` (${chartSnapshot.bestLabel})` : ""}.`;
     } else {
-      summaryEl.textContent = `Set trend across ${chartSnapshot.periodCount} periods. Peak period ${formatSetCount(chartSnapshot.bestSets)}${chartSnapshot.bestLabel ? ` (${chartSnapshot.bestLabel})` : ""}.`;
+      summaryEl.textContent = `Volume trend across ${chartSnapshot.periodCount} periods. Peak period ${formatSetCount(chartSnapshot.bestSets)}${chartSnapshot.bestLabel ? ` (${chartSnapshot.bestLabel})` : ""}.`;
     }
   }
 
@@ -3809,7 +4079,9 @@ function renderMuscleGroupSection() {
             ? `Early trend from ${chartSnapshot.nonZeroCount} sessions. Trend visible after 5 sessions.`
             : "Mature trend view";
     const interpretation = chartSnapshot.nonZeroCount > 1
-      ? `${performanceDirectionLabel(chartSnapshot.direction)} by ${chartSnapshot.delta > 0 ? "+" : ""}${Math.round(chartSnapshot.delta)} sets.`
+      ? (chartSnapshot.direction === "flat"
+        ? "Stable effective-set volume."
+        : `${performanceDirectionLabel(chartSnapshot.direction)} by ${formatSetCount(Math.abs(chartSnapshot.delta))}.`)
       : "No trend yet.";
     rangeEl.textContent = `Visualized range: ${formatDateRange(start, end)} · ${sessionsLabel} · ${stageHint} ${interpretation}`;
   }
@@ -4854,7 +5126,11 @@ function handleInputEvents() {
         return;
       }
       if (action === "muscle-dimension") {
-        const next = button.dataset.dimension === "detailed" ? "detailed" : "primary";
+        const next = button.dataset.dimension === "detailed"
+          ? "detailed"
+          : button.dataset.dimension === "grouped"
+            ? "grouped"
+            : "primary";
         if (ui.muscleDimension !== next) {
           ui.muscleDimension = next;
           ui.selectedMuscles = [];

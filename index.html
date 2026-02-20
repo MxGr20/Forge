@@ -183,7 +183,7 @@
 
         <div class="panel">
           <div class="row space">
-            <h2>Muscle Group Sets</h2>
+            <h2>Muscle Group Volume</h2>
           </div>
           <div class="row wrap stats-controls">
             <label class="inline-control">
@@ -201,6 +201,7 @@
             <div class="inline-control">
               <div class="muted small">Muscle Source</div>
               <div class="segment-toggle" id="muscleDimensionToggle">
+                <button class="ghost small" data-action="muscle-dimension" data-dimension="grouped">Muscle Groups</button>
                 <button class="ghost small" data-action="muscle-dimension" data-dimension="primary">Primary</button>
                 <button class="ghost small" data-action="muscle-dimension" data-dimension="detailed">Secondary</button>
               </div>
@@ -210,9 +211,9 @@
             Muscles to Track
             <div id="muscleFilterSelect" class="tag-multi-root" data-multi-root="stats-muscles"></div>
           </label>
-          <div class="muted small">Select one or more muscles to compare sets over time.</div>
+          <div class="muted small">Select one or more muscles to compare effective sets over time.</div>
           <div class="chart-card">
-            <div id="muscleChartTitle" class="chart-title">Sets by Muscle Group</div>
+            <div id="muscleChartTitle" class="chart-title">Effective Sets by Muscle Group</div>
             <div id="muscleVolumeChart" class="chart"></div>
             <div id="muscleChartSummary" class="chart-summary muted small" role="status" aria-live="polite"></div>
             <div id="muscleChartRange" class="muted small chart-range"></div>
