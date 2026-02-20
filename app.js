@@ -1,7 +1,7 @@
 ﻿
 const STORAGE_KEY = "forge_data_v1";
 const STORAGE_VERSION = 2;
-const STATS_DATA_VERSION = 4;
+const STATS_DATA_VERSION = 5;
 const SUPABASE_URL = "https://ruuzraihxczeeeafkbve.supabase.co";
 const SUPABASE_ANON_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InJ1dXpyYWloeGN6ZWVlYWZrYnZlIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzA2MTU5MzAsImV4cCI6MjA4NjE5MTkzMH0.OVLMNwN0e940dSd6-aZqzaFFXCY3hcbgR_-dGvF1OwE";
 const SUPABASE_AUTH_URL_KEYS = [
@@ -82,6 +82,9 @@ const CANONICAL_MUSCLE_GROUPS = Object.freeze([
   "Cardio",
   "Chest",
   "Forearms",
+  "Pelvis",
+  "Upper Legs",
+  "Lower Legs",
   "Glutes",
   "Hamstrings",
   "Lats",
@@ -264,7 +267,7 @@ function statsMuscleGroupsForExercise(exercise, dimension) {
     const groups = uniqueMuscleList([
       ...parseMuscleGroups(exercise?.primaryMuscleGroups),
       ...parseMuscleGroups(exercise?.detailedMuscleGroups)
-    ].map(mapMuscleToCanonicalGroup));
+    ].flatMap((tag) => mapMuscleToCanonicalGroups(tag)));
     return groups.length ? groups : ["Other"];
   }
   const source = dimension === "detailed" ? exercise?.detailedMuscleGroups : exercise?.primaryMuscleGroups;
@@ -279,28 +282,42 @@ function normalizeMuscleMatchKey(value) {
     .trim();
 }
 
-function mapMuscleToCanonicalGroup(muscle) {
+function mapMuscleToCanonicalGroups(muscle) {
   const key = normalizeMuscleMatchKey(muscle);
-  if (!key) return "Other";
-  if (/\b(cardio|running?|jog|sprint|cycling?|bike|swim|elliptical|rower|rowing|stair|hiit|jump rope|jumprope)\b/.test(key)) return "Cardio";
-  if (/\b(abdominals?|abs?|obliques?|core|transverse)\b/.test(key)) return "Abdominals";
-  if (/\b(abductors?|hip abduction)\b/.test(key)) return "Abductors";
-  if (/\b(adductors?|groin|hip adduction)\b/.test(key)) return "Adductors";
-  if (/\b(biceps?|brachii)\b/.test(key)) return "Biceps";
-  if (/\b(calves?|calf|gastrocnemius|soleus)\b/.test(key)) return "Calves";
-  if (/\b(chest|pectorals?|pecs?)\b/.test(key)) return "Chest";
-  if (/\b(forearms?|brachioradialis|wrist)\b/.test(key)) return "Forearms";
-  if (/\b(glutes?|gluteus|butt)\b/.test(key)) return "Glutes";
-  if (/\b(hamstrings?|hammy|biceps femoris|semitendinosus|semimembranosus)\b/.test(key)) return "Hamstrings";
-  if (/\b(latissimus|lats?)\b/.test(key)) return "Lats";
-  if (/\b(lower back|lumbar|erectors?|spinae|quadratus lumborum|ql)\b/.test(key)) return "Lower Back";
-  if (/\b(neck|cervical|sternocleidomastoid|scalenes?)\b/.test(key)) return "Neck";
-  if (/\b(quadriceps?|quads?|vastus|rectus femoris)\b/.test(key)) return "Quadriceps";
-  if (/\b(shoulders?|deltoids?|delts?)\b/.test(key)) return "Shoulders";
-  if (/\b(traps?|trapezius)\b/.test(key)) return "Traps";
-  if (/\b(triceps?)\b/.test(key)) return "Triceps";
-  if (/\b(upper back|mid back|rhomboids?|teres|back)\b/.test(key)) return "Upper Back";
-  return "Other";
+  if (!key) return ["Other"];
+
+  if (/\b(connective tissue)\b/.test(key)) return ["Upper Legs", "Lower Legs"];
+  if (/\b(pelvis|pelvic)\b/.test(key)) return ["Pelvis"];
+  if (/^legs?$/.test(key)) return ["Upper Legs"];
+  if (/\b(rotator cuff)\b/.test(key)) return ["Shoulders"];
+  if (/\b(serratus anterior|spine|brachilias|brachialis)\b/.test(key)) return ["Other"];
+
+  if (/\b(tibilias anterior|tibialis anterior|achilles|ankles?|edl|ehl|hip flexors?|peroneus|tfl)\b/.test(key)) {
+    return ["Lower Legs"];
+  }
+  if (/\b(glutes?|gluteus|butt|quadriceps?|quads?|vastus|rectus femoris)\b/.test(key)) return ["Upper Legs"];
+  if (/\b(hamstrings?|hammy|biceps femoris|semitendinosus|semimembranosus)\b/.test(key)) return ["Upper Legs"];
+  if (/\b(calves?|calf|gastrocnemius|soleus)\b/.test(key)) return ["Lower Legs"];
+
+  if (/\b(cardio|running?|jog|sprint|cycling?|bike|swim|elliptical|rower|rowing|stair|hiit|jump rope|jumprope)\b/.test(key)) return ["Cardio"];
+  if (/\b(abdominals?|abs?|obliques?|core|transverse)\b/.test(key)) return ["Abdominals"];
+  if (/\b(abductors?|hip abduction)\b/.test(key)) return ["Abductors"];
+  if (/\b(adductors?|groin|hip adduction)\b/.test(key)) return ["Adductors"];
+  if (/\b(biceps?|brachii)\b/.test(key)) return ["Biceps"];
+  if (/\b(chest|pectorals?|pecs?)\b/.test(key)) return ["Chest"];
+  if (/\b(forearms?|brachioradialis|wrist)\b/.test(key)) return ["Forearms"];
+  if (/\b(latissimus|lats?)\b/.test(key)) return ["Lats"];
+  if (/\b(lower back|lumbar|erectors?|spinae|quadratus lumborum|ql)\b/.test(key)) return ["Lower Back"];
+  if (/\b(neck|cervical|sternocleidomastoid|scalenes?)\b/.test(key)) return ["Neck"];
+  if (/\b(shoulders?|deltoids?|delts?)\b/.test(key)) return ["Shoulders"];
+  if (/\b(traps?|trapezius)\b/.test(key)) return ["Traps"];
+  if (/\b(triceps?)\b/.test(key)) return ["Triceps"];
+  if (/\b(upper back|mid back|rhomboids?|teres|back)\b/.test(key)) return ["Upper Back"];
+  return ["Other"];
+}
+
+function mapMuscleToCanonicalGroup(muscle) {
+  return mapMuscleToCanonicalGroups(muscle)[0] || "Other";
 }
 
 function uniqueMuscleList(groups) {
@@ -373,7 +390,12 @@ function buildExerciseMuscleShares(exercise) {
     .filter((entry) => entry.dimension === "detailed")
     .map((entry) => ({ name: entry.name, share: entry.rawWeight / totalRawWeight })));
   const groupedShares = mergeMuscleShareEntries(weightedEntries
-    .map((entry) => ({ name: mapMuscleToCanonicalGroup(entry.name), share: entry.rawWeight / totalRawWeight })));
+    .flatMap((entry) => {
+      const mappedGroups = mapMuscleToCanonicalGroups(entry.name);
+      const safeGroups = mappedGroups.length ? mappedGroups : ["Other"];
+      const splitShare = (entry.rawWeight / totalRawWeight) / safeGroups.length;
+      return safeGroups.map((name) => ({ name, share: splitShare }));
+    }));
 
   return {
     primary: primaryShares,
@@ -3774,7 +3796,9 @@ function collectExerciseLibraryMuscles(dimension) {
         ...parseMuscleGroups(exercise?.primaryMuscleGroups),
         ...parseMuscleGroups(exercise?.detailedMuscleGroups)
       ];
-      allTags.forEach((tag) => groups.add(mapMuscleToCanonicalGroup(tag)));
+      allTags.forEach((tag) => {
+        mapMuscleToCanonicalGroups(tag).forEach((group) => groups.add(group));
+      });
     });
     if (!groups.size) groups.add("Other");
     const ordered = CANONICAL_MUSCLE_GROUPS.filter((group) => groups.has(group));
@@ -4088,8 +4112,15 @@ function renderMuscleGroupSection() {
 
   const legend = $("#muscleChartLegend");
   if (legend) {
-    legend.innerHTML = data.series.length
-      ? data.series.map((entry) => {
+    const sortedLegendSeries = data.series
+      .slice()
+      .sort((a, b) => {
+        const totalDelta = (Number.isFinite(b.total) ? b.total : 0) - (Number.isFinite(a.total) ? a.total : 0);
+        if (Math.abs(totalDelta) > 1e-9) return totalDelta;
+        return (a.name || "").localeCompare(b.name || "");
+      });
+    legend.innerHTML = sortedLegendSeries.length
+      ? sortedLegendSeries.map((entry) => {
         return `
           <div class="legend-item">
             <span class="legend-name">
